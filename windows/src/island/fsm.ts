@@ -10,8 +10,17 @@ export class IslandStateMachine {
 
   /** home → petit delay, seconds. */
   homeToPetitDelay = 15;
-  /** petit → hidden delay, seconds. */
+  /** petit → hidden delay, seconds. Only for an island that was shown for a reason. */
   petitToHiddenDelay = 60;
+  /** petit → hidden delay once the cursor has left it, seconds. */
+  peekLingerDelay = 3;
+  /**
+   * Keep the compact island on screen all the time. Off, it stays fully hidden
+   * and only comes out when the cursor rests on the top edge, or for an alert.
+   */
+  alwaysVisible = false;
+  /** How long the cursor must rest on the top edge before a hidden island comes out, seconds. */
+  hoverRevealDelay = 1;
   /** coucou → petit once the greeting animation ends (no hover). */
   greetAutoCollapseDelay = 0.6;
   /** coucou → petit while the mouse hovers the greeting. */
@@ -22,10 +31,13 @@ export class IslandStateMachine {
   private petitHide: number | null = null;
   private homeCollapse: number | null = null;
   private greetCollapse: number | null = null;
+  private hoverReveal: number | null = null;
+  private launched = false;
 
   // ── Inputs ──────────────────────────────────────────────────────────────────
 
   launch() {
+    this.launched = true;
     this.cancelTimers();
     this.transition("coucou");
   }
@@ -34,7 +46,8 @@ export class IslandStateMachine {
     switch (this.state) {
       case "hidden":
         this.cancelTimers();
-        this.transition("petit");
+        if (this.hoverRevealDelay <= 0) this.transition("petit");
+        else this.scheduleHoverReveal();
         break;
       case "petit":
         this.clear("petitHide");
@@ -51,6 +64,8 @@ export class IslandStateMachine {
   mouseLeft() {
     switch (this.state) {
       case "hidden":
+        // Left before the delay was up: the island stays hidden.
+        this.clear("hoverReveal");
         break;
       case "petit":
         this.schedulePetitHide();
@@ -77,12 +92,35 @@ export class IslandStateMachine {
     if (this.greetCollapse == null) this.scheduleGreetCollapse(this.greetAutoCollapseDelay);
   }
 
-  /** Non-alert work event: show compact from hidden. */
-  reveal() {
+  /**
+   * Non-alert work event: show compact from hidden. Without "always visible" the
+   * island is meant to stay out of sight, so only `urgent` events (something a
+   * human has to act on) get through.
+   */
+  reveal(urgent = false) {
     if (this.state !== "hidden") return;
+    if (!this.alwaysVisible && !urgent) return;
     this.cancelTimers();
     this.transition("petit");
-    this.schedulePetitHide();
+    this.schedulePetitHide(urgent ? this.petitToHiddenDelay : this.peekLingerDelay);
+  }
+
+  /**
+   * "Always visible" was switched while the app runs. `hovering`: the cursor is on
+   * the island. `paused`: a paused island must not pop up because of a setting.
+   */
+  setAlwaysVisible(on: boolean, hovering: boolean, paused: boolean) {
+    if (on === this.alwaysVisible) return;
+    this.alwaysVisible = on;
+    // Before launch the greeting owns the island; it ends in petit either way.
+    if (!this.launched) return;
+    if (on) {
+      this.clear("petitHide");
+      this.clear("hoverReveal");
+      if (this.state === "hidden" && !paused) this.transition("petit");
+    } else if (this.state === "petit" && !hovering) {
+      this.schedulePetitHide();
+    }
   }
 
   /** Alert or explicit request: open straight to expanded. */
@@ -104,12 +142,22 @@ export class IslandStateMachine {
 
   // ── Timers ──────────────────────────────────────────────────────────────────
 
-  private schedulePetitHide() {
+  private schedulePetitHide(delay = this.peekLingerDelay) {
     this.clear("petitHide");
+    if (this.alwaysVisible) return;
     this.petitHide = window.setTimeout(() => {
       this.petitHide = null;
       if (this.state === "petit") this.transition("hidden");
-    }, this.petitToHiddenDelay * 1000);
+    }, delay * 1000);
+  }
+
+  private scheduleHoverReveal() {
+    this.clear("hoverReveal");
+    this.hoverReveal = window.setTimeout(() => {
+      this.hoverReveal = null;
+      if (this.state !== "hidden") return;
+      this.transition("petit");
+    }, this.hoverRevealDelay * 1000);
   }
 
   private scheduleHomeCollapse() {
@@ -129,7 +177,7 @@ export class IslandStateMachine {
     }, delay * 1000);
   }
 
-  private clear(which: "petitHide" | "homeCollapse" | "greetCollapse") {
+  private clear(which: "petitHide" | "homeCollapse" | "greetCollapse" | "hoverReveal") {
     const id = this[which];
     if (id != null) window.clearTimeout(id);
     this[which] = null;
@@ -139,6 +187,7 @@ export class IslandStateMachine {
     this.clear("petitHide");
     this.clear("homeCollapse");
     this.clear("greetCollapse");
+    this.clear("hoverReveal");
   }
 
   private transition(next: FsmState) {

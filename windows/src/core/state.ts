@@ -92,6 +92,10 @@ export interface Settings {
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
   model: string;
+  /** Keep the compact island on screen at all times; off, it hides until hovered. */
+  alwaysVisible: boolean;
+  /** Seconds the cursor must rest on the top edge to bring a hidden island out. */
+  hoverRevealDelay: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -106,6 +110,8 @@ export const DEFAULT_SETTINGS: Settings = {
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5",
+  alwaysVisible: false,
+  hoverRevealDelay: 1,
 };
 
 type Listener = () => void;
