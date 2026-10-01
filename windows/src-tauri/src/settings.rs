@@ -20,10 +20,36 @@ pub struct Settings {
     /// Defaulted explicitly so a settings.json written by an older build still loads.
     #[serde(default = "default_model")]
     pub model: String,
+    /// Keep the compact island on screen at all times. Off, the island stays fully
+    /// hidden until the cursor rests on the top edge of the screen.
+    #[serde(default)]
+    pub always_visible: bool,
+    /// Seconds the cursor must rest on the top edge to bring a hidden island out.
+    #[serde(default = "default_hover_reveal_delay")]
+    pub hover_reveal_delay: f64,
 }
 
 fn default_model() -> String {
     crate::claude::DEFAULT_MODEL.to_string()
+}
+
+fn default_hover_reveal_delay() -> f64 {
+    1.0
+}
+
+/// Longest hover delay the settings window offers.
+const MAX_HOVER_REVEAL_DELAY: f64 = 10.0;
+
+impl Settings {
+    /// Pulls values the settings window could not produce back into range, so a
+    /// hand-edited settings.json cannot make the island unreachable.
+    pub fn sanitized(mut self) -> Self {
+        if !self.hover_reveal_delay.is_finite() {
+            self.hover_reveal_delay = default_hover_reveal_delay();
+        }
+        self.hover_reveal_delay = self.hover_reveal_delay.clamp(0.0, MAX_HOVER_REVEAL_DELAY);
+        self
+    }
 }
 
 impl Default for Settings {
@@ -43,6 +69,8 @@ impl Default for Settings {
             autostart: false,
             hooks_installed: false,
             model: default_model(),
+            always_visible: false,
+            hover_reveal_delay: default_hover_reveal_delay(),
         }
     }
 }
@@ -59,7 +87,9 @@ fn settings_path() -> PathBuf {
 
 pub fn load() -> Settings {
     match std::fs::read(settings_path()) {
-        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Ok(bytes) => serde_json::from_slice::<Settings>(&bytes)
+            .map(Settings::sanitized)
+            .unwrap_or_default(),
         Err(_) => Settings::default(),
     }
 }
@@ -70,4 +100,36 @@ pub fn save(settings: &Settings) -> std::io::Result<()> {
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     std::fs::write(settings_path(), json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_from_an_older_build_still_load() {
+        // Written before the visibility settings existed: losing it would reset
+        // every preference the user had.
+        let old = r#"{
+            "soundEnabled": true, "soundVolume": 0.12, "autoCloseInterval": 5.0,
+            "absenceInterval": 180.0, "activeIntegrations": ["integration_github"],
+            "screen": "primary", "autostart": false, "hooksInstalled": false,
+            "model": "claude-sonnet-5"
+        }"#;
+        let s: Settings = serde_json::from_str(old).unwrap();
+        assert!(!s.always_visible);
+        assert_eq!(s.hover_reveal_delay, 1.0);
+        assert_eq!(s.auto_close_interval, 5.0);
+        assert_eq!(s.model, "claude-sonnet-5");
+    }
+
+    #[test]
+    fn hover_delay_is_pulled_back_into_range() {
+        let with = |delay: f64| Settings { hover_reveal_delay: delay, ..Settings::default() }.sanitized();
+        assert_eq!(with(2.5).hover_reveal_delay, 2.5);
+        assert_eq!(with(99.0).hover_reveal_delay, 10.0);
+        assert_eq!(with(-3.0).hover_reveal_delay, 0.0);
+        assert_eq!(with(f64::NAN).hover_reveal_delay, 1.0);
+        assert_eq!(with(f64::INFINITY).hover_reveal_delay, 1.0);
+    }
 }

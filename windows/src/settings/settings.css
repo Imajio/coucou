@@ -87,6 +87,11 @@ section > h2 {
   font-size: 12.5px;
 }
 
+/* A setting that has no effect right now. */
+.row.off {
+  opacity: 0.45;
+}
+
 .spacer {
   flex: 1 1 auto;
 }

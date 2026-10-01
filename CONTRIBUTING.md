@@ -146,7 +146,8 @@ bash scripts/test-safe-links.sh
 # Windows and Linux app
 cd windows
 npx tsc --noEmit
-cargo check -p coucou
+npm test
+cargo test --workspace
 ```
 
 ## What must not be in the repository

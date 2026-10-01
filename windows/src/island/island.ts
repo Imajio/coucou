@@ -330,8 +330,9 @@ export class Island {
     this.expand(view);
   }
 
-  reveal() {
-    this.fsm.reveal();
+  /** `urgent`: a human has to act on it, so it shows even when the island is set to stay hidden. */
+  reveal(urgent = false) {
+    this.fsm.reveal(urgent);
   }
 
   /** An alert stopped waiting for an answer: let the island auto-close again. */
@@ -526,10 +527,17 @@ export class Island {
 
   private wireInput() {
     // The wake strip is the only thing the OS can hit while the island is hidden.
+    // Resting on it long enough (Settings → hover delay) brings the island out.
     this.wakeStrip.addEventListener("mouseenter", () => {
       Sound.resume();
-      if (State.mode === "hidden") this.fsm.mouseEntered();
+      if (this.fsm.state === "hidden") this.fsm.mouseEntered();
     });
+    // Only while still hidden: once the island is out, the cursor poll owns hover.
+    const leftStrip = () => {
+      if (this.fsm.state === "hidden") this.fsm.mouseLeft();
+    };
+    this.wakeStrip.addEventListener("mouseleave", leftStrip);
+    document.documentElement.addEventListener("mouseleave", leftStrip);
 
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
@@ -885,6 +893,8 @@ export class Island {
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
     this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    this.fsm.hoverRevealDelay = State.settings.hoverRevealDelay;
+    this.fsm.setAlwaysVisible(State.settings.alwaysVisible, this.wasInIsland, State.paused);
     State.notify();
   }
 
