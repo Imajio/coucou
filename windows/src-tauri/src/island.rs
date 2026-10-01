@@ -197,6 +197,12 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
             let mut ticks: u32 = 0;
             while gate.is_active() {
                 std::thread::sleep(Duration::from_millis(16));
+                // The island may have been collapsed to the wake strip while this
+                // thread slept. Everything below is measured against a window that
+                // no longer exists in that shape.
+                if !gate.is_active() {
+                    break;
+                }
 
                 // Monitors get plugged in, unplugged, rearranged and rescaled, and
                 // an island pinned to coordinates that no longer exist is an island
@@ -262,10 +268,25 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     && y >= 0.0
                     && y <= size.1;
 
+                // The collapsed wake strip has to take the mouse: it is the only
+                // thing that can notice the cursor resting on the top edge. A
+                // stale tick that landed after the collapse used to switch
+                // click-through back on, and a hidden island then never woke.
+                if gate.collapsed.load(Ordering::Relaxed) {
+                    continue;
+                }
+
                 let accept = on_island || dragging;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {
                     gate.ignoring.store(!accept, Ordering::Relaxed);
                     let _ = win.set_ignore_cursor_events(!accept);
+                    // The collapse may have landed between the check above and the
+                    // call: undo this tick's write, `set_collapsed` already ran.
+                    if gate.collapsed.load(Ordering::Relaxed) {
+                        let _ = win.set_ignore_cursor_events(false);
+                        gate.ignoring.store(false, Ordering::Relaxed);
+                        continue;
+                    }
                 }
 
                 let _ = win.emit("cursor", CursorPayload { x, y });
