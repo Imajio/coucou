@@ -140,6 +140,8 @@ export class Island {
         if (!req) return;
         Sound.play(d === "deny" ? "blip" : "approve");
         void Bridge.approvalDecision(req.requestId, d);
+        // Answered: the terminal that asked gets the keyboard back.
+        void Bridge.releaseFocus();
         State.pendingApproval = null;
         State.isPinned = false;
         this.fsm.pinned = false;
@@ -266,6 +268,8 @@ export class Island {
       State.isPinned = false;
       void Bridge.focusWindow(false);
     }
+    // Typing must never land in an island nobody can see.
+    if (mode === "hidden") void Bridge.releaseFocus();
     if (mode !== "expanded") {
       this.engine.resetMorph();
       // Nothing can be seen of the sequence once the island is shut, and leaving
@@ -330,8 +334,9 @@ export class Island {
     this.expand(view);
   }
 
-  reveal() {
-    this.fsm.reveal();
+  /** `urgent`: a human has to act on it, so it shows even when the island is set to stay hidden. */
+  reveal(urgent = false) {
+    this.fsm.reveal(urgent);
   }
 
   /** An alert stopped waiting for an answer: let the island auto-close again. */
@@ -526,14 +531,24 @@ export class Island {
 
   private wireInput() {
     // The wake strip is the only thing the OS can hit while the island is hidden.
+    // Resting on it long enough (Settings → hover delay) brings the island out.
     this.wakeStrip.addEventListener("mouseenter", () => {
       Sound.resume();
-      if (State.mode === "hidden") this.fsm.mouseEntered();
+      if (this.fsm.state === "hidden") this.fsm.mouseEntered();
     });
+    // Only while still hidden: once the island is out, the cursor poll owns hover.
+    const leftStrip = () => {
+      if (this.fsm.state === "hidden") this.fsm.mouseLeft();
+    };
+    this.wakeStrip.addEventListener("mouseleave", leftStrip);
+    document.documentElement.addEventListener("mouseleave", leftStrip);
 
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
       State.lastActivity = performance.now();
+      // A click is the user picking the island: let it take the keyboard so
+      // Esc reaches it. Hovering alone never steals focus.
+      void Bridge.focusWindow(true);
       if (State.mode !== "expanded") {
         this.fsm.click();
         return;
@@ -544,9 +559,13 @@ export class Island {
       }
     });
 
+    // Esc closes one stage at a time: open → compact → hidden. A card waiting
+    // for an answer (pinned) stays put.
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && State.mode === "expanded" && !State.isPinned) this.collapse();
       State.lastActivity = performance.now();
+      if (e.key !== "Escape" || State.isPinned) return;
+      if (State.mode === "expanded") this.collapse();
+      else if (State.mode === "compact") this.fsm.forceHidden();
     });
 
     void onDragDrop((e) => this.onDragDrop(e));
@@ -874,6 +893,8 @@ export class Island {
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
     this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    this.fsm.hoverRevealDelay = State.settings.hoverRevealDelay;
+    this.fsm.setAlwaysVisible(State.settings.alwaysVisible, this.wasInIsland, State.paused);
     State.notify();
   }
 

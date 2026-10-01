@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Windows: Settings → General has an **Always show island** switch. Off, the island stays fully hidden until the pointer rests on the top edge for the configurable **Hover delay**; on, it stays on screen
+- Windows: clicking the island gives it the keyboard, so `Esc` works there: an open island folds to compact, a compact one hides, and the keyboard goes back to the app you were in
 - Compact island on screens without a notch (#22) — thanks @Kamasoutra
 - Only web links (http/https) open from the notch; other kinds of links from Claude or integrations are ignored (#16) — thanks @Cris1670
 - Hook socket limited to your own user account, with size and time limits; logs no longer keep commands, n8n data or full URLs, and stay under 1 MB (#16) — thanks @Cris1670 and @Vignesh-Thangamariappan

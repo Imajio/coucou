@@ -34,6 +34,9 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub struct Shared {
     pub settings: Mutex<Settings>,
     pub gate: Arc<PollGate>,
+    /// The window that had the keyboard before the island took it, so it can be
+    /// handed back when the island hides. Raw HWND; 0 = nothing remembered.
+    pub prev_foreground: Mutex<isize>,
 }
 
 #[derive(Serialize)]
@@ -61,6 +64,7 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
+    let settings = settings.sanitized();
     let (screen_changed, autostart_changed) = {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen;
@@ -106,11 +110,35 @@ fn set_island_rect(shared: State<Shared>, x: f64, y: f64, width: f64, height: f6
 }
 
 #[tauri::command]
-fn focus_window(app: AppHandle, focused: bool) {
+fn focus_window(app: AppHandle, shared: State<Shared>, focused: bool) {
     let Some(win) = island::window(&app) else { return };
+    if focused {
+        // Remember who had the keyboard, unless it is already one of ours.
+        let fg = island::foreground();
+        let ours = [
+            island::raw_handle(&win),
+            app.get_webview_window("settings").and_then(|w| island::raw_handle(&w)),
+        ];
+        if fg != 0 && !ours.contains(&Some(fg)) {
+            *shared.prev_foreground.lock().unwrap() = fg;
+        }
+    }
     island::set_activating(&win, focused);
     if focused {
         let _ = win.set_focus();
+    }
+}
+
+/// The island is going away: stop taking the keyboard, and if it still has it,
+/// give it back to the window that had it before. Typing must never land in
+/// an island nobody can see.
+#[tauri::command]
+fn release_focus(app: AppHandle, shared: State<Shared>) {
+    let Some(win) = island::window(&app) else { return };
+    island::set_activating(&win, false);
+    let prev = std::mem::take(&mut *shared.prev_foreground.lock().unwrap());
+    if island::raw_handle(&win) == Some(island::foreground()) {
+        island::restore_foreground(prev);
     }
 }
 
@@ -377,6 +405,7 @@ pub fn run() {
         .manage(Shared {
             settings: Mutex::new(loaded.clone()),
             gate: gate.clone(),
+            prev_foreground: Mutex::new(0),
         })
         .manage(Pending::default())
         .manage(Chat::default())
@@ -386,6 +415,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            release_focus,
             reposition,
             open_url,
             open_in_vscode,

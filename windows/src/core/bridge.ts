@@ -46,6 +46,9 @@ export const Bridge = {
   /** Give the window keyboard focus (chat field) and take it away again. */
   focusWindow: (focused: boolean) => call<void>("focus_window", { focused }),
 
+  /** The island is hiding: hand the keyboard back to the window that had it. */
+  releaseFocus: () => call<void>("release_focus"),
+
   reposition: () => call<void>("reposition"),
 
   openUrl: (url: string) => call<void>("open_url", { url }),

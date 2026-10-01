@@ -19,8 +19,8 @@ use windows::Win32::System::Ole::RevokeDragDrop;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{EnumChildWindows, GetClassNameW};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW,
+    GetCursorPos, GetForegroundWindow, GetWindowLongPtrW, IsWindow, SetForegroundWindow,
+    SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 /// Logical size of the full window — the largest island view, like the macOS panel.
@@ -257,6 +257,31 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
     }
 }
 
+/// The window that has the keyboard right now, as a raw handle (0 = none).
+/// Raw because an HWND cannot be kept in shared state across threads.
+pub fn foreground() -> isize {
+    unsafe { GetForegroundWindow().0 as isize }
+}
+
+/// Raw handle of one of our windows, for comparing with `foreground()`.
+pub fn raw_handle(win: &WebviewWindow) -> Option<isize> {
+    hwnd_of(win).map(|h| h.0 as isize)
+}
+
+/// Hands the keyboard back to a window remembered by `foreground()`, if it is
+/// still around.
+pub fn restore_foreground(raw: isize) {
+    if raw == 0 {
+        return;
+    }
+    let hwnd = HWND(raw as *mut _);
+    unsafe {
+        if IsWindow(Some(hwnd)).as_bool() {
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+}
+
 /// Position, size and scale of the monitor the island lives on. Any change here
 /// means the island has to be placed again.
 fn current_screen_key(app: &AppHandle) -> Option<(i32, i32, u32, u32, u64)> {
@@ -284,6 +309,12 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
             let mut ticks: u32 = 0;
             while gate.is_active() {
                 std::thread::sleep(Duration::from_millis(16));
+                // The island may have been collapsed to the wake strip while this
+                // thread slept. Everything below is measured against a window that
+                // no longer exists in that shape.
+                if !gate.is_active() {
+                    break;
+                }
 
                 // Monitors get plugged in, unplugged, rearranged and rescaled, and
                 // an island pinned to coordinates that no longer exist is an island
@@ -349,10 +380,25 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     && y >= 0.0
                     && y <= size.1;
 
+                // The collapsed wake strip has to take the mouse: it is the only
+                // thing that can notice the cursor resting on the top edge. A
+                // stale tick that landed after the collapse used to switch
+                // click-through back on, and a hidden island then never woke.
+                if gate.collapsed.load(Ordering::Relaxed) {
+                    continue;
+                }
+
                 let accept = on_island || dragging;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {
                     gate.ignoring.store(!accept, Ordering::Relaxed);
                     let _ = win.set_ignore_cursor_events(!accept);
+                    // The collapse may have landed between the check above and the
+                    // call: undo this tick's write, `set_collapsed` already ran.
+                    if gate.collapsed.load(Ordering::Relaxed) {
+                        let _ = win.set_ignore_cursor_events(false);
+                        gate.ignoring.store(false, Ordering::Relaxed);
+                        continue;
+                    }
                 }
 
                 let _ = win.emit("cursor", CursorPayload { x, y });

@@ -310,7 +310,7 @@ function handleHook(island: Island, payload: HookPayload) {
         // is the signal instead — but it has to be on screen for that to mean
         // anything, hence the reveal. We just told the relay a human can act.
         State.setPillBadge(CLAUDE_ID, "approval");
-        island.reveal();
+        island.reveal(true);
       }
       // Coucou answers within 108 s or not at all; after that the terminal has
       // taken over and the card would be lying.

@@ -381,6 +381,29 @@ function generalSection(): HTMLElement {
     void save();
   });
 
+  // The delay only matters while the island is allowed to hide.
+  const hoverDelay = h("input", {
+    type: "number", min: "0", max: "10", step: "0.5",
+    value: String(settings.hoverRevealDelay),
+    style: "width:72px",
+  }) as HTMLInputElement;
+  const hoverDelayRow = h("div", { class: "row" },
+    h("label", { text: "Hover delay" }),
+    hoverDelay,
+    h("span", { class: "hint", text: "seconds resting on the top edge" }),
+  );
+  const syncHoverDelay = () => {
+    hoverDelay.disabled = settings.alwaysVisible;
+    hoverDelayRow.classList.toggle("off", settings.alwaysVisible);
+  };
+  hoverDelay.addEventListener("change", () => {
+    const seconds = Number(hoverDelay.value);
+    settings.hoverRevealDelay = Number.isFinite(seconds) ? Math.max(0, Math.min(10, seconds)) : 1;
+    hoverDelay.value = String(settings.hoverRevealDelay);
+    void save();
+  });
+  syncHoverDelay();
+
   const screen = h("select", {}) as HTMLSelectElement;
   screen.append(
     h("option", { value: "primary", text: "Main display" }),
@@ -401,6 +424,16 @@ function generalSection(): HTMLElement {
       toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
       volume,
     ),
+    h("div", { class: "row" },
+      h("label", { text: "Always show island" }),
+      toggle(settings.alwaysVisible, (v) => {
+        settings.alwaysVisible = v;
+        syncHoverDelay();
+        void save();
+      }),
+      h("span", { class: "hint", text: "off: fully hidden until you hover the top edge" }),
+    ),
+    hoverDelayRow,
     h("div", { class: "row" },
       h("label", { text: "Auto-close" }),
       autoClose,

@@ -39,17 +39,30 @@ installs for the current user only — no admin prompt.
 
 | What you do | What happens |
 |---|---|
-| Move the mouse to the very top-centre of the screen | Mochi peeks out |
+| Rest the mouse on the very top-centre of the screen | Mochi peeks out (after the hover delay, 1 s by default) |
 | Click the small island | It opens |
 | Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Mochi for two seconds | Hearts |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
-| `Esc` | Closes the island |
+| Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
 | Tray icon | Open, Settings…, Pause, Quit |
 
 Everything else happens on its own: a Claude Code permission request opens the
 island with **Deny / Allow**, a finished session shows what it did, and
 your integrations sit in the coloured pills next to Mochi.
+
+### Keeping it out of sight
+
+**Settings… → General** decides how present the island is:
+
+- **Always show island: on**: the small island stays at the top of the screen at
+  all times.
+- **Always show island: off** *(default)*: the island is fully hidden. Rest the
+  pointer on the top-centre edge for **Hover delay** seconds (0 to 10, 1 by default)
+  and it comes out; three seconds after the pointer leaves, it goes back. A
+  Claude Code permission request, a finished or failed session and a file drop
+  still open it, because someone has to act on them; quieter events (a session
+  starting, a tool running, an integration update) wait until you hover.
 
 ## Claude Code
 
