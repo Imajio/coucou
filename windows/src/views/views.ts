@@ -15,7 +15,7 @@ import { buildMail } from "./mail";
 import { Bridge } from "../core/bridge";
 import { pickerModels, switchProvider } from "../core/models";
 import { buildTranslate } from "./translate";
-import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
+import { renderIntegrationCard, resetIntegrationCards, type IntegrationCardHooks } from "./integrations";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -40,6 +40,8 @@ export interface ViewHost {
   focus?(): void;
   /** Called every frame while the view is on screen. */
   tick?(nowMs: number): void;
+  /** Called when the view comes on screen, before its sync. */
+  enter?(): void;
 }
 
 // ── Shared pieces ─────────────────────────────────────────────────────────────
@@ -173,11 +175,18 @@ function buildOverview(actions: ViewActions): ViewHost {
     tick(nowMs: number) {
       if (mode === "ticker") ticker.tick(nowMs);
     },
+    enter() {
+      // Card details and the Cal.com calendar open at their first level again.
+      detailOpen = false;
+      resetIntegrationCards();
+      cardKey = "";
+    },
     sync() {
       const task = State.focusTask;
       if (task?.id !== lastFocus) {
         lastFocus = task?.id ?? null;
         detailOpen = false;
+        resetIntegrationCards();
         cardKey = "";
         mode = null;
       }

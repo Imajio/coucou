@@ -1,12 +1,10 @@
-// Integration cards shown in the overview's left card — DOM ports of
+// Integration cards shown in the overview's left card - DOM ports of
 // IntegrationCardView and friends from IslandViewContent.swift.
-//
-// Cal.com is the one simplification: macOS shows a three-level calendar
-// (month → day → booking); here it is the list of upcoming bookings.
 
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { pillDefinition } from "../core/catalog";
+import { bookingsOn, dayKey, pageFor, pageRows, stepPage, type CalendarPage } from "../core/calendar";
 import { State, type AgentTask } from "../core/state";
 import { Bridge } from "../core/bridge";
 
@@ -324,29 +322,124 @@ function notionCard(): HTMLElement {
 
 // ── Cal.com ───────────────────────────────────────────────────────────────────
 
+// Three levels as in CalcomCardView: the half-month calendar, a day's
+// bookings, one booking. Where the card stands survives the polls' re-renders
+// and resets when another pill takes the focus.
+
+const CALCOM = "#C9956A";
+
+type CalcomPlace = { page: CalendarPage; day: string | null; booking: string | null };
+
+let calcom: CalcomPlace = { page: pageFor(new Date()), day: null, booking: null };
+
+/** Back to the calendar on today's half month, for a fresh focus. */
+export function resetIntegrationCards() {
+  calcom = { page: pageFor(new Date()), day: null, booking: null };
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const hhmm = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+function fromKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function calcomCard(): HTMLElement {
-  const bookings = arr("integration_calcom", "bookings")
-    .slice()
-    .sort((a, b) => new Date(String(a.start)).getTime() - new Date(String(b.start)).getTime());
-  const rows = h("div", { class: "int-rows tight" });
-  if (bookings.length === 0) {
-    rows.append(h("div", { class: "int-empty", text: "No calls scheduled" }));
-  }
-  for (const b of bookings.slice(0, 3)) {
-    const when = new Date(String(b.start));
-    const day = when.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
-    const time = when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-    rows.append(
-      h(
-        "div",
-        { class: "int-row" },
-        dot("#C9956A", 4),
-        h("span", { class: "int-time", text: `${day} ${time}` }),
-        h("span", { class: "int-name", text: String(b.title ?? "Meeting") }),
-      ),
+  const card = h("div", { class: "int-card cal" });
+  const bookings = arr("integration_calcom", "bookings");
+
+  const go = (place: Partial<CalcomPlace>) => {
+    calcom = { ...calcom, ...place };
+    render();
+  };
+  const back = (onclick: () => void) =>
+    h("button", { class: "int-back", title: "Back", onclick }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 }));
+
+  function calendar(): Node[] {
+    const { page } = calcom;
+    const month = new Date(page.year, page.month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    const today = dayKey(new Date());
+    const busy = new Set(
+      bookings.map((b) => new Date(String(b.start))).filter((d) => !Number.isNaN(d.getTime())).map(dayKey),
     );
+    const nav = h(
+      "div",
+      { class: "cal-nav" },
+      h("button", { class: "cal-step", title: "Previous", onclick: () => go({ page: stepPage(page, -1) }) },
+        svg(ICONS.chevronLeft, 9, { stroke: 2.6 })),
+      h("span", { text: `${month} Q${page.half}` }),
+      h("button", { class: "cal-step", title: "Next", onclick: () => go({ page: stepPage(page, 1) }) },
+        svg(ICONS.chevronRight, 9, { stroke: 2.6 })),
+    );
+    const grid = h("div", { class: "cal-grid" });
+    for (const row of pageRows(page)) {
+      const first = row[0]!;
+      const line = h("div", { class: "cal-row" },
+        h("span", { class: "cal-week", text: `${pad2(first.getDate())}/${pad2(first.getMonth() + 1)}` }));
+      for (const day of row) {
+        if (!day) {
+          line.append(h("span", { class: "cal-day empty" }));
+          continue;
+        }
+        const key = dayKey(day);
+        line.append(
+          h("button", { class: key === today ? "cal-day today" : "cal-day", onclick: () => go({ day: key }) },
+            h("b", { text: String(day.getDate()) }),
+            h("i", { class: busy.has(key) ? "on" : "" })),
+        );
+      }
+      grid.append(line);
+    }
+    return [header(CALCOM, "Cal.com", "Schedule"), nav, grid];
   }
-  return h("div", { class: "int-card" }, header("#C9956A", "Cal.com", "Schedule"), rows);
+
+  function day(key: string): Node[] {
+    const list = bookingsOn(bookings, key);
+    const label = fromKey(key).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+    const head = h("div", { class: "int-detail-head cal-head" }, back(() => go({ day: null })), h("b", { text: label }));
+    const rows = h("div", { class: "cal-bookings" });
+    if (list.length === 0) rows.append(h("div", { class: "int-empty", text: "No calls scheduled" }));
+    for (const b of list) {
+      rows.append(
+        h("button", { class: "cal-booking", onclick: () => go({ booking: String(b.id) }) },
+          dot(CALCOM, 4),
+          h("span", { class: "int-time", text: hhmm(new Date(String(b.start))) }),
+          h("span", { class: "int-name", text: String(b.title ?? "Meeting") }),
+          svg(ICONS.chevronRight, 8, { stroke: 2.2 })),
+      );
+    }
+    return [head, rows];
+  }
+
+  function booking(b: Record<string, unknown>): Node[] {
+    const head = h("div", { class: "int-detail-head cal-head" },
+      back(() => go({ booking: null })),
+      h("span", { class: "int-time", text: hhmm(new Date(String(b.start))) }));
+    const body = h("div", { class: "cal-detail" }, h("b", { text: String(b.title ?? "Meeting") }));
+    const line = (icon: string, value: unknown, kind: string) => {
+      if (typeof value === "string" && value.trim()) {
+        body.append(h("div", { class: `cal-line ${kind}` }, svg(icon, 10), h("span", { text: value })));
+      }
+    };
+    line(ICONS.person, b.attendeeName, "name");
+    line(ICONS.envelope, b.attendeeEmail, "email");
+    line(ICONS.note, b.attendeeNotes, "notes");
+    return [head, body];
+  }
+
+  function render() {
+    clear(card);
+    // A booking cancelled meanwhile falls back to its day.
+    const picked = calcom.booking ? bookings.find((b) => String(b.id) === calcom.booking) : undefined;
+    if (calcom.booking && !picked) calcom = { ...calcom, booking: null };
+    if (picked) card.append(...booking(picked));
+    else if (calcom.day) card.append(...day(calcom.day));
+    else card.append(...calendar());
+  }
+
+  render();
+  return card;
 }
 
 // ── n8n ───────────────────────────────────────────────────────────────────────
