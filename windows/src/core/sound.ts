@@ -1,7 +1,8 @@
-// SoundEngine — port of SoundEngine.swift.
+// SoundEngine - port of SoundEngine.swift.
 // The 28 WAVs are the macOS app's own files (see SOUNDS_DIR in vite.config.ts);
-// they are served at /sounds/<name>.wav. Default volume 0.12, slider range 0–0.2,
-// exactly like the Mac player, and several sounds may overlap.
+// they are served at /sounds/<name>.wav. Default volume 0.12, slider range 0-0.2,
+// like the Mac player, and several sounds may overlap. Output is twice the
+// slider value: at the top of the slider a sound still peaks below full scale.
 
 export const SOUND_NAMES = [
   "peek", "open", "close", "hover", "blip", "slap", "annoyed", "dizzy", "greet",
@@ -11,6 +12,14 @@ export const SOUND_NAMES = [
 ] as const;
 
 export type SoundName = (typeof SOUND_NAMES)[number];
+
+export const MAX_VOLUME = 0.2;
+const BOOST = 2;
+
+/** The gain a slider value plays at. */
+export function outputGain(volume: number): number {
+  return Math.max(0, Math.min(MAX_VOLUME, volume)) * BOOST;
+}
 
 class SoundEngine {
   enabled = true;
@@ -31,7 +40,7 @@ class SoundEngine {
       const ctx = new Ctor();
       this.ctx = ctx;
       const master = ctx.createGain();
-      master.gain.value = this.volume;
+      master.gain.value = outputGain(this.volume);
       master.connect(ctx.destination);
       this.master = master;
       await Promise.all(
@@ -76,8 +85,8 @@ class SoundEngine {
   }
 
   setVolume(v: number) {
-    this.volume = Math.max(0, Math.min(0.2, v));
-    if (this.master) this.master.gain.value = this.volume;
+    this.volume = Math.max(0, Math.min(MAX_VOLUME, v));
+    if (this.master) this.master.gain.value = outputGain(this.volume);
   }
 
   setEnabled(on: boolean) {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: every sound plays twice as loud at the same volume setting
 - Windows and Linux: the Cal.com pill shows the same calendar as on macOS instead of a list: half a month at a time with a dot on each day that has a call, then the day's calls, then one call with the attendee's name, email and notes
 - Windows and Linux: send a dropped file by email from the island, as on macOS: through Resend when its key and sender address are set, otherwise in a new message of the default mail app with the file attached
 - Windows and Linux: a file dropped on the folded island goes through its whole animation to the "what do you want to do with it" card instead of stopping at 0 %
