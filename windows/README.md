@@ -45,6 +45,7 @@ installs for the current user only — no admin prompt.
 | Rest the pointer on Mochi for two seconds | Hearts |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
 | Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
+| Music tab (♫) in the open island | What is playing, with previous, play/pause, next and volume |
 | Tray icon | Open, Settings…, Pause, Quit |
 
 Everything else happens on its own: a Claude Code permission request opens the
@@ -63,6 +64,18 @@ your integrations sit in the coloured pills next to Mochi.
   Claude Code permission request, a finished or failed session and a file drop
   still open it, because someone has to act on them; quieter events (a session
   starting, a tool running, an integration update) wait until you hover.
+
+### Music
+
+The ♫ tab shows everything that is playing: browser tabs (YouTube, SoundCloud,
+web players), Spotify, Media Player, VLC and any app that appears in Windows'
+own media controls. Pick a source from the chips at the top, then skip back,
+play or pause, skip forward and set its volume. The volume slider moves that
+app's own volume when its audio can be found, and the whole system volume
+otherwise; the label next to it says which.
+
+The list is read once a second, only while the tab is open. On Linux it comes
+from MPRIS through `playerctl`, which has to be installed.
 
 ## Claude Code
 

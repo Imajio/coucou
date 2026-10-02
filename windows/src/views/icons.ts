@@ -36,6 +36,16 @@ export const ICONS = {
   star: "M12 3.2l2.6 5.55 5.9.82-4.3 4.3 1.05 6.13L12 17.1l-5.25 2.9L7.8 13.87 3.5 9.57l5.9-.82L12 3.2z",
   // square.stack.fill
   stack: "M5 8h14v11.5H5V8zm1.8-3h10.4v1.6H6.8V5zm1.6-2.6h7.2V4H8.4V2.4z",
+  // music.note
+  music: "M19.5 3.2v12.3a2.9 2.9 0 1 1-1.8-2.68V7.4l-8 1.6v8.5a2.9 2.9 0 1 1-1.8-2.68V5.6l11.6-2.4z",
+  // play.fill
+  play: "M8 5.2v13.6L19 12 8 5.2z",
+  // pause.fill
+  pause: "M7 5h3.6v14H7V5zm6.4 0H17v14h-3.6V5z",
+  // backward.end.fill
+  previous: "M6 5.5h2v13H6v-13zm2.6 6.5L18 5.6v12.8L8.6 12z",
+  // forward.end.fill
+  next: "M16 5.5h2v13h-2v-13zm-.6 6.5L6 18.4V5.6l9.4 6.4z",
   // doc.text
   doc: "M6.5 2.6h7l4 4v14.8h-11V2.6zm6.6 1.6v3.3h3.3l-3.3-3.3zM8.6 11h6.8v1.5H8.6V11zm0 3.4h6.8v1.5H8.6v-1.5z",
 } as const;

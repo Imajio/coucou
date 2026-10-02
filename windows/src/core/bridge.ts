@@ -100,9 +100,43 @@ export const Bridge = {
   /** Opens the configured n8n instance in the browser. */
   openN8n: () => call<void>("open_n8n"),
 
+  // ── Music ─────────────────────────────────────────────────────────────────
+  /** What is playing on the machine, the OS's current session first. */
+  mediaSessions: () => callOrThrow<MediaSession[]>("media_sessions"),
+  mediaControl: (id: string, action: MediaAction) =>
+    callOrThrow<void>("media_control", { id, action }),
+  /** Returns "app" or "system": which volume was actually changed. */
+  mediaSetVolume: (id: string, volume: number) =>
+    callOrThrow<"app" | "system">("media_set_volume", { id, volume }),
+  /** Album art of the current track as a `data:` URL, or null. */
+  mediaArtwork: (id: string) => call<string | null>("media_artwork", { id }),
+
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
 };
+
+export interface MediaSession {
+  id: string;
+  /** Readable source name: "Spotify", "Microsoft Edge"… */
+  app: string;
+  title: string;
+  artist: string;
+  album: string;
+  playing: boolean;
+  canPrevious: boolean;
+  canNext: boolean;
+  canPlayPause: boolean;
+  /** 0 to 1, null when no volume could be read. */
+  volume: number | null;
+  /** "app": the source's own volume; "system": the whole output's. */
+  volumeScope: "app" | "system";
+  position: number | null;
+  duration: number | null;
+  /** The session the keyboard's media keys would drive. */
+  current: boolean;
+}
+
+export type MediaAction = "playPause" | "play" | "pause" | "next" | "previous";
 
 export interface IntegrationUpdate {
   id: string;
