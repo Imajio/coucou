@@ -274,9 +274,9 @@ function translatorSection(hasKey: boolean): HTMLElement {
   function show(present: boolean) {
     dot.style.background = present ? "#22c55e" : "#f4505e";
     state.textContent = present
-      ? "Translations go to Google Cloud Translation with this key, only when you ask for one."
-      : "Without a key, the Translate tab opens Google Translate in your browser instead.";
-    field.placeholder = present ? "••••••••••••  (stored)" : "Google Cloud API key";
+      ? "Translating with the official Google Cloud Translation API and this key."
+      : "Translating for free with Google Translate's public web service. It is unofficial, so Google may slow it down; a Google Cloud key (optional) uses the official API instead.";
+    field.placeholder = present ? "••••••••••••  (stored)" : "Google Cloud API key (optional)";
     clearBtn.style.display = present ? "" : "none";
   }
 

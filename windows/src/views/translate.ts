@@ -1,9 +1,11 @@
-// Translator tab: Google Translate from the island. With an API key the text is
-// translated in place; without one, the same text opens on translate.google.com.
+// Translator tab: Google Translate from the island. Free by default (Google's
+// public web service); the official API when a key is saved in Settings. When a
+// translation fails, the same text can still be opened on translate.google.com.
 
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge } from "../core/bridge";
+import { translateFree } from "../core/translate";
 import { Sound } from "../core/sound";
 import {
   LANGUAGES, defaultTarget, googleTranslateUrl, languageName, swapLanguages,
@@ -13,6 +15,7 @@ import type { ViewActions, ViewHost } from "./views";
 const MAX_CHARS = 5000;
 const PREF_SOURCE = "coucou.translate.source";
 const PREF_TARGET = "coucou.translate.target";
+const API_KEY = "google-translate-api-key";
 
 const known = (code: string | null) => code != null && (code === "auto" || LANGUAGES.some(([c]) => c === code));
 
@@ -47,7 +50,8 @@ export function buildTranslate(actions: ViewActions): ViewHost {
     : defaultTarget(navigator.language);
   let detected: string | null = null;
   let busy = false;
-  let needsKey = false;
+  /** The last translation failed: offer the browser instead. */
+  let failed = false;
   let lastKey = "";
 
   const sourceSel = languageSelect(true);
@@ -67,15 +71,14 @@ export function buildTranslate(actions: ViewActions): ViewHost {
 
   const copy = h("button", { class: "btn secondary tr-small" }, svg(ICONS.copy, 11), h("span", { text: "Copy" }));
   const go = h("button", { class: "btn primary tr-small" }, h("span", { text: "Translate" }), h("span", { class: "kbd", text: "↵" }));
-  const settings = h("button", { class: "btn secondary tr-small", text: "Settings…" });
-  const openWeb = h("button", { class: "btn primary tr-small" }, h("span", { text: "Open in browser" }), svg(ICONS.arrowUpRight, 9));
+  const openWeb = h("button", { class: "btn secondary tr-small" }, h("span", { text: "Open in browser" }), svg(ICONS.arrowUpRight, 9));
 
   const body = h(
     "div",
     { class: "tr-body" },
     h("div", { class: "tr-langs" }, sourceSel, swap, targetSel, h("div", { class: "grow" }), web),
     h("div", { class: "tr-boxes" }, input, output),
-    h("div", { class: "tr-footer" }, status, h("div", { class: "grow" }), copy, go, settings, openWeb),
+    h("div", { class: "tr-footer" }, status, h("div", { class: "grow" }), openWeb, copy, go),
   );
   const cardEl = h("div", { class: "card wash" }, body);
   cardEl.style.setProperty("--wash", "rgba(34,211,238,0.34)");
@@ -83,6 +86,7 @@ export function buildTranslate(actions: ViewActions): ViewHost {
 
   function setStatus(text: string, kind: "" | "err" | "ok" = "") {
     status.textContent = text;
+    status.title = text; // long messages are cut off; the tooltip has all of it
     status.className = kind ? `tr-status ${kind}` : "tr-status";
   }
 
@@ -91,13 +95,7 @@ export function buildTranslate(actions: ViewActions): ViewHost {
     targetSel.value = target;
     const swapped = swapLanguages(source, target, detected);
     swap.disabled = swapped.source === source && swapped.target === target;
-    // Without a key: the way to add one, the browser fallback, and Translate
-    // stays to retry once the key is saved.
-    copy.style.display = needsKey ? "none" : "";
-    go.classList.toggle("primary", !needsKey);
-    go.classList.toggle("secondary", needsKey);
-    settings.style.display = needsKey ? "" : "none";
-    openWeb.style.display = needsKey ? "" : "none";
+    openWeb.style.display = failed ? "" : "none";
     copy.disabled = !output.textContent;
     go.disabled = busy;
     output.classList.toggle("busy", busy);
@@ -123,22 +121,23 @@ export function buildTranslate(actions: ViewActions): ViewHost {
     setStatus("Translating…");
     render();
     try {
-      const result = await Bridge.translate(text, source, target);
+      // A saved key means the official API (through Rust, so the key never
+      // reaches this page); otherwise Google Translate's free web service.
+      const hasKey = (await Bridge.secretPresent(API_KEY)) ?? false;
+      const result = hasKey
+        ? await Bridge.translate(text, source, target)
+        : await translateFree(text, source, target);
       output.textContent = result.text;
       detected = result.detectedSource;
       lastKey = key;
-      needsKey = false;
+      failed = false;
       setStatus(source === "auto" && detected ? `Detected ${languageName(detected)}` : "");
     } catch (err) {
       const message = String(err).replace(/^Error:\s*/, "");
       lastKey = "";
-      if (message === "NO_KEY") {
-        needsKey = true;
-        setStatus("No Google Translate key yet.");
-      } else {
-        setStatus(message, "err");
-        Sound.play("error");
-      }
+      failed = true;
+      setStatus(message, "err");
+      Sound.play("error");
     } finally {
       busy = false;
       render();
@@ -192,7 +191,6 @@ export function buildTranslate(actions: ViewActions): ViewHost {
   go.addEventListener("click", () => void run(true));
   web.addEventListener("click", openInBrowser);
   openWeb.addEventListener("click", openInBrowser);
-  settings.addEventListener("click", () => actions.openSettingsWindow());
 
   render();
 
