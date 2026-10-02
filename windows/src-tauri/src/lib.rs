@@ -6,6 +6,7 @@ mod integrations;
 mod island;
 mod llm;
 mod log;
+mod mail;
 mod media;
 mod pipe;
 mod platform;
@@ -507,6 +508,7 @@ pub fn run() {
             open_app,
             focus_session_window,
             window_at_cursor,
+            mail::mail_send,
             open_settings_window,
             set_paused,
             media::media_sessions,

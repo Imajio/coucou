@@ -18,6 +18,8 @@ pub const KNOWN_KEYS: &[&str] = &[
     "github-token",
     "stripe-api-key",
     "resend-api-key",
+    // Not a secret, but it belongs with the Resend key, as on macOS.
+    "resend-from",
     "notion-api-key",
     "calcom-api-key",
     crate::translate::KEY,

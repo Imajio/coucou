@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: send a dropped file by email from the island, as on macOS: through Resend when its key and sender address are set, otherwise in a new message of the default mail app with the file attached
 - Windows and Linux: a file dropped on the folded island goes through its whole animation to the "what do you want to do with it" card instead of stopping at 0 %
 - Windows: drag Mochi onto any window to attach it to the chat, as on macOS: the island names the window under the cursor during the drag, and a browser's page address comes along
 - Windows: "Open terminal" brings back the exact window a Claude Code, Gemini CLI or Antigravity session runs in (Windows Terminal, a console, or the VS Code window of that folder) instead of opening the folder

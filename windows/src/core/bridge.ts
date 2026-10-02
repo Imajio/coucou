@@ -110,6 +110,12 @@ export const Bridge = {
    * reads a browser's address bar, which takes a moment: only on drop.
    */
   windowAtCursor: (withUrl: boolean) => call<WindowInfo | null>("window_at_cursor", { withUrl }),
+  /**
+   * Sends a file by email after the Send click: Resend when its key and sender
+   * are saved, else the default mail app, else mailto. Says how it went.
+   */
+  mailSend: (to: string, subject: string, body: string, path: string | null) =>
+    callOrThrow<"sent" | "compose" | "cancelled" | "mailto">("mail_send", { to, subject, body, path }),
   /** Brings back the window a session runs in; false when it can't. */
   focusSessionWindow: (pids: number[], cwd: string | null) =>
     call<boolean>("focus_session_window", { pids, cwd }).then((ok) => ok ?? false),

@@ -285,6 +285,17 @@ pub fn window_handle(_win: &WebviewWindow) -> isize {
     0
 }
 
+/// A new message in the default mail app through xdg-email, file attached.
+pub fn compose_mail(to: &str, subject: &str, body: &str, path: Option<&str>) -> Option<String> {
+    let mut cmd = Command::new("xdg-email");
+    cmd.args(["--subject", subject, "--body", body]);
+    if let Some(p) = path {
+        cmd.args(["--attach", p]);
+    }
+    cmd.arg(to);
+    cmd.status().ok().filter(|s| s.success()).map(|_| "compose".to_string())
+}
+
 /// Wayland doesn't let one app look at another's windows.
 pub fn window_at_cursor(_with_url: bool) -> Option<super::WindowInfo> {
     None

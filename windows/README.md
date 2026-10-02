@@ -43,7 +43,7 @@ installs for the current user only — no admin prompt.
 | Click the small island | It opens on the tab you left it on (Overview, Ask, Music, Translate or Settings), even after a restart |
 | Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Mochi for two seconds | Hearts |
-| Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
+| Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it or to send it by email |
 | Drag Mochi out of the open island onto any window | The island names the window as you go; let go and the chat opens with that window attached (app, title and, for a browser, the page's address) |
 | Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
 | Music tab (♫) in the open island | What is playing, with previous, play/pause, next and volume |
@@ -124,6 +124,16 @@ agents (Gemini CLI, Antigravity), the AI providers for the chat and the
 services. Each row says what is still missing (hooks, a key). Declare Cursor or
 Codex and it can become the **main pill**, the one in the big card. An AI pill's
 card has **Chat with…**, which moves the chat to that provider and opens it.
+
+### Sending a file by email
+
+After a drop, **Send by email** opens a small message card: recipient, subject
+(the file's name), a few words. Nothing leaves before you click **Send**. With a
+Resend key and a sender address in **Settings… → Integrations → Resend**, Resend
+sends it with the file attached. Otherwise your default mail app (Outlook,
+Thunderbird…) opens the message with the file attached, for you to send from
+there; if no mail app takes it, a plain `mailto:` message opens and Explorer
+shows the file to attach.
 
 ### Gemini CLI and Antigravity
 
@@ -226,7 +236,6 @@ problems. It stays on your machine.
   the top edge instead of hiding in a notch.
 - Permission approval works from **any** terminal; the Mac build only listens to
   VS Code sessions.
-- Not in this version: sending a file by email.
 - Cal.com shows the next bookings as a list rather than the Mac's calendar.
 
 ## Linux
