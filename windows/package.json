@@ -12,7 +12,7 @@
     "predev": "cargo build --release -p coucou-hook",
     "prebuild": "cargo build --release -p coucou-hook",
     "pack": "tauri build && node scripts/pack.mjs",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/fsm.test.mjs tests/media.test.mjs tests/languages.test.mjs"
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/fsm.test.mjs tests/media.test.mjs tests/languages.test.mjs tests/layout.test.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

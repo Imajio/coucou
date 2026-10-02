@@ -322,7 +322,7 @@ function handleHook(island: Island, payload: HookPayload) {
         island.dropPin();
         State.updateTask(CLAUDE_ID, "working");
         State.setPillBadge(CLAUDE_ID, null);
-        if (State.view === "approval") island.setView(State.defaultView());
+        if (State.view === "approval") island.setView(island.homeView());
         State.notify();
       }, 110_000);
       break;

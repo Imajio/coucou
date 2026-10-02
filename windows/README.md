@@ -40,7 +40,7 @@ installs for the current user only — no admin prompt.
 | What you do | What happens |
 |---|---|
 | Rest the mouse on the very top-centre of the screen | Mochi peeks out (after the hover delay, 1 s by default) |
-| Click the small island | It opens |
+| Click the small island | It opens on the tab you left it on (Overview, Ask, Music, Translate or Settings), even after a restart |
 | Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Mochi for two seconds | Hearts |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
