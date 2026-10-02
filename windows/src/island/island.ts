@@ -115,6 +115,8 @@ export class Island {
   private confusedRecovery: number | null = null;
   private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
+  /** The view on screen at the last sync, null while the island is folded. */
+  private lastShownView: IslandViewName | null = null;
   /** The last tab the user was on in the open island; see homeView(). */
   private lastTab: string | null = loadLastTab();
 
@@ -996,6 +998,12 @@ export class Island {
     this.greetingCanvas.style.display = greetingActive ? "block" : "none";
 
     this.header.sync();
+    // A view that comes on screen starts fresh, as a SwiftUI view does.
+    const shown = expanded && !greetingActive ? State.view : null;
+    if (shown !== this.lastShownView) {
+      this.lastShownView = shown;
+      if (shown) this.views.get(shown)?.enter?.();
+    }
     for (const [name, view] of this.views) {
       const on = name === State.view;
       view.el.classList.toggle("on", on);

@@ -236,7 +236,6 @@ problems. It stays on your machine.
   the top edge instead of hiding in a notch.
 - Permission approval works from **any** terminal; the Mac build only listens to
   VS Code sessions.
-- Cal.com shows the next bookings as a list rather than the Mac's calendar.
 
 ## Linux
 
