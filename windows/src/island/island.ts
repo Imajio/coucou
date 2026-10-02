@@ -274,8 +274,10 @@ export class Island {
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "home":
-          // Reopening: back to the tab that was left.
-          this.expand(this.homeView());
+          // An alert opens straight on its own card; a plain reopen goes back
+          // to the tab that was left. Going through that tab first would stop
+          // a file drop's sequence before its card even shows.
+          this.expand(this.alertView ?? this.homeView());
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "coucou":
@@ -381,9 +383,14 @@ export class Island {
   /** Alert from the hook server: open on this view. Pinned alerts never auto-close. */
   alert(view: IslandViewName) {
     this.fsm.pinned = State.isPinned;
+    this.alertView = view;
     this.fsm.forceHome();
+    this.alertView = null;
     this.expand(view);
   }
+
+  /** The card an alert is opening the island on, while it does. */
+  private alertView: IslandViewName | null = null;
 
   /** `urgent`: a human has to act on it, so it shows even when the island is set to stay hidden. */
   reveal(urgent = false) {
