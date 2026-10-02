@@ -85,12 +85,15 @@ let Google detect it) and the target, type or paste up to 5,000 characters and
 press `Enter`. The swap button turns the translation around, and Copy puts it
 on the clipboard.
 
-Translating inside the island uses the Google Cloud Translation API with your
-own key: **Settings… → Translator → API key** (create one in a Google Cloud
-project with the Cloud Translation API turned on). The key is kept in the
-Windows Credential Manager, and text is only sent when you ask for a
-translation. Without a key, the tab opens the same text on translate.google.com
-in your browser instead.
+It is free out of the box: without a key the tab uses Google Translate's public
+web service, the one browser extensions use. That service is unofficial, so
+Google may slow it down when it is used a lot; the tab then says so and offers
+to open the text on translate.google.com instead.
+
+For the official API, add a Google Cloud Translation key in **Settings… →
+Translator → API key** (a Google Cloud project with the Cloud Translation API
+turned on). The key is kept in the Windows Credential Manager. Either way, text
+is only sent to Google when you ask for a translation.
 
 ## Claude Code
 

@@ -1,6 +1,10 @@
-// Translator tab: Google Cloud Translation (the v2 "Basic" API) with the user's
-// own API key, kept in the OS credential store like every other key. Nothing is
-// sent until the user asks for a translation.
+// Translator tab, official half: Google Cloud Translation (the v2 "Basic" API)
+// with the user's own API key, kept in the OS credential store like every other
+// key. Sent only when the user asks for a translation.
+//
+// Without a key the island uses Google Translate's free web endpoint, and calls
+// it itself (src/core/translate.ts): that endpoint answers browsers but turns
+// the app's own HTTP client away as a bot.
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -16,10 +20,6 @@ const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 /// Longest text sent in one go. A stray paste of a whole book should not turn
 /// into a surprise on someone's Google Cloud bill.
 pub const MAX_CHARS: usize = 5000;
-
-/// Returned instead of a translation when no key is stored; the tab then offers
-/// the settings and Google Translate in the browser.
-pub const NO_KEY: &str = "NO_KEY";
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -102,23 +102,35 @@ pub async fn translate(text: String, source: String, target: String) -> Result<T
     if !valid_code(&target) || target == "auto" || !(source == "auto" || valid_code(&source)) {
         return Err("Unknown language.".into());
     }
-    let key = secrets::get(KEY).ok_or_else(|| NO_KEY.to_string())?;
-
+    let key = secrets::get(KEY).ok_or("No Google Cloud Translation key is saved.")?;
     let client = reqwest::Client::builder().timeout(TIMEOUT).build().map_err(|e| e.to_string())?;
+    translate_with_key(&client, &key, text, &source, &target).await
+}
+
+fn unreachable(e: reqwest::Error) -> String {
+    if e.is_timeout() {
+        "Google Translate did not answer in time.".to_string()
+    } else {
+        "Can't reach Google Translate. Check the connection.".to_string()
+    }
+}
+
+/// The official Cloud Translation API, with the user's key.
+async fn translate_with_key(
+    client: &reqwest::Client,
+    key: &str,
+    text: &str,
+    source: &str,
+    target: &str,
+) -> Result<Translation, String> {
     // The key goes in a header, never in the URL, so it can't end up in a log.
     let response = client
         .post(ENDPOINT)
         .header("X-Goog-Api-Key", key)
-        .json(&request_body(text, &source, &target))
+        .json(&request_body(text, source, target))
         .send()
         .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                "Google Translate did not answer in time.".to_string()
-            } else {
-                "Can't reach Google Translate. Check the connection.".to_string()
-            }
-        })?;
+        .map_err(unreachable)?;
     let status = response.status().as_u16();
     let body = response.text().await.map_err(|e| e.to_string())?;
     parse_response(status, &body)
@@ -171,3 +183,4 @@ mod tests {
         }
     }
 }
+

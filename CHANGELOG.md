@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: the Translate tab is free with no setup, through Google Translate's public web service; a Google Cloud key stays optional, for the official API
 - Windows and Linux: the island reopens on the tab you left it on, including after a restart, and goes back to it once a permission request is answered
 - Windows and Linux: the open island no longer folds away while you type in the chat or the translator; auto-close counts from your last key
 - Windows and Linux: a Translate tab in the island translates with Google Translate, using your own Google Cloud Translation key from Settings, or opens the text on translate.google.com when there is no key
