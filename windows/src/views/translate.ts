@@ -50,6 +50,8 @@ export function buildTranslate(actions: ViewActions): ViewHost {
     : defaultTarget(navigator.language);
   let detected: string | null = null;
   let busy = false;
+  /** Asked again while a translation was on its way: run once it lands. */
+  let rerun = false;
   /** The last translation failed: offer the browser instead. */
   let failed = false;
   let lastKey = "";
@@ -116,7 +118,11 @@ export function buildTranslate(actions: ViewActions): ViewHost {
       return;
     }
     const key = `${source}|${target}|${text}`;
-    if (busy || (key === lastKey && !force)) return;
+    if (busy) {
+      rerun = true;
+      return;
+    }
+    if (key === lastKey && !force) return;
     busy = true;
     setStatus("Translating…");
     render();
@@ -141,6 +147,11 @@ export function buildTranslate(actions: ViewActions): ViewHost {
     } finally {
       busy = false;
       render();
+      // The text or the languages changed meanwhile: translate what is there now.
+      if (rerun) {
+        rerun = false;
+        void run();
+      }
     }
   }
 
