@@ -38,7 +38,7 @@ Meet **Mochi**: a soft little squircle with big eyes that pops out of your notch
 - 💬 **Chat with Claude, or with Gemini and OpenAI models using your own keys**: on macOS click the model name above the chat box, on Windows and Linux use the two menus above it, to switch provider and pick a model; the list comes from each API account. Windows and Linux also take OpenRouter, a local Ollama and any OpenAI-compatible server.
 - 📋 **Declare the tools you use**: open Settings → Active pills and choose which coding tools, agents and AI providers show up in the island. VS Code is always there; toggle Gemini CLI, Antigravity, Anthropic, Google AI, OpenAI and more. Check Cursor or Codex and you can make it your main pill, the one in the big card.
 - 📎 **Drop a file on the notch**: Mochi turns into a box and swallows it, then ask a question about it or send it by email (with Resend, or through Mail.app on macOS and your default mail app on Windows and Linux).
-- 🪟 **Drag Mochi onto any window**: attach that window as context for Claude (on Linux: macOS and Windows only).
+- 🪟 **Drag Mochi onto any window**: attach that window as context for Claude (macOS and Windows; not on Linux yet).
 - 🔌 **Integrations** — Stripe payments, n8n workflows, GitHub, Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Mochi.
 - 🎭 **A real character** — idle breathing, blinks, eyes on a sphere that follow your mouse, emotes, 28 handcrafted sounds, a greeting on launch.
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the notch (the top edge of the screen on Windows and Linux).
