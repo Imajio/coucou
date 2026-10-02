@@ -112,6 +112,15 @@ in time, Coucou stays quiet and Claude Code asks in the terminal as usual.
 
 It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
+### Gemini CLI and Antigravity
+
+**Settings… → Gemini CLI** and **Settings… → Antigravity** install the same relay
+for those agents, with the same diff, dated backup and click to confirm:
+Gemini CLI's hooks go in `%USERPROFILE%\.gemini\settings.json` (your own hooks
+there are kept), Antigravity's in their own `coucou` set in
+`%USERPROFILE%\.gemini\config\hooks.json`. Their sessions then show up in the
+island with their own pill and step-by-step progress, like Claude Code's.
+
 ## Chat and keys
 
 The chat works with several AI providers, and you can switch at any point of a

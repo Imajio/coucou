@@ -36,6 +36,12 @@ function validateAgent(raw: string | undefined): string | null {
 
 const FALLBACK_COLORS = ["#22C55E", "#EAB308", "#60A5FA", "#E879F9"];
 
+/** Agents Coucou installs hooks for: their real name and colour, as on macOS. */
+const KNOWN_AGENTS: Record<string, { name: string; color: string }> = {
+  gemini: { name: "Gemini CLI", color: "#8AB4F8" },
+  antigravity: { name: "Antigravity", color: "#E879F9" },
+};
+
 function agentColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) {
@@ -176,7 +182,8 @@ function handleHook(island: Island, payload: HookPayload) {
   /** Ensure the agent pill exists (no-op for Claude Code). */
   const ensurePill = () => {
     if (isExternalAgent) {
-      State.upsertExternalAgent(agentId, validAgent!, agentColor(validAgent!));
+      const known = KNOWN_AGENTS[validAgent!];
+      State.upsertExternalAgent(agentId, known?.name ?? validAgent!, known?.color ?? agentColor(validAgent!));
     } else {
       upsert(projectName, cwd);
     }

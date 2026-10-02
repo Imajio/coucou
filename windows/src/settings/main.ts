@@ -3,7 +3,7 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
-import { Bridge, onEvent, type HookStatus } from "../core/bridge";
+import { Bridge, onEvent, type HookAgent, type HookStatus } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
 import { buildModelPicker } from "../views/modelpicker";
@@ -42,34 +42,66 @@ function renderDiff(text: string): HTMLElement {
   return box;
 }
 
-// ── Claude Code section ───────────────────────────────────────────────────────
+// ── Agent hook sections (Claude Code, Gemini CLI, Antigravity) ────────────────
 
-function claudeSection(status: HookStatus): HTMLElement {
+interface HookCopy {
+  title: string;
+  on: string;
+  off: string;
+  /** What the confirm screen says before the diff. */
+  install: string;
+  remove: string;
+}
+
+const HOOK_COPY: Record<HookAgent, HookCopy> = {
+  claude: {
+    title: "Claude Code",
+    on: "Coucou is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.",
+    off: "Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing.",
+    install: "This is exactly what will change in your settings.json. Your own hooks are left untouched.",
+    remove: "This removes Coucou's entries only. Your own hooks are left untouched.",
+  },
+  gemini: {
+    title: "Gemini CLI",
+    on: "Coucou is hooked into Gemini CLI: its sessions show up in the island with their own pill.",
+    off: "Install the hooks to see your Gemini CLI sessions in the island, step by step.",
+    install: "This is exactly what will change in ~/.gemini/settings.json. Your own hooks are left untouched.",
+    remove: "This removes Coucou's entries from ~/.gemini/settings.json only.",
+  },
+  antigravity: {
+    title: "Antigravity",
+    on: "Coucou is hooked into Antigravity (agy): its sessions show up in the island with their own pill.",
+    off: "Install the hooks to see your Antigravity sessions in the island.",
+    install: "Coucou adds its own hook set to ~/.gemini/config/hooks.json. Your other hook sets are left untouched.",
+    remove: "This removes Coucou's hook set from ~/.gemini/config/hooks.json only.",
+  },
+};
+
+function hookSection(agent: HookAgent, status: HookStatus): HTMLElement {
+  const copy = HOOK_COPY[agent];
   const body = h("div", { style: "display:flex;flex-direction:column;gap:12px" });
   const section = h(
     "section",
     {},
-    h("h2", {}, statusDot(status.installed), h("span", { text: "Claude Code" })),
+    h("h2", {}, statusDot(status.installed), h("span", { text: copy.title })),
     body,
   );
 
   const rebuild = async () => {
-    const fresh = await Bridge.hooksStatus();
+    const fresh = await Bridge.hooksStatus(agent);
     if (fresh) Object.assign(status, fresh);
     clear(body);
     draw();
     const head = section.querySelector("h2")!;
     clear(head);
-    head.append(statusDot(status.installed), h("span", { text: "Claude Code" }));
+    head.append(statusDot(status.installed), h("span", { text: copy.title }));
   };
 
   function draw() {
     body.append(
       h("div", {
         class: "hint",
-        text: status.installed
-          ? "Coucou is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there."
-          : "Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing.",
+        text: status.installed ? copy.on : copy.off,
       }),
       h("div", { class: "row" },
         h("label", { text: "settings.json" }),
@@ -115,7 +147,7 @@ function claudeSection(status: HookStatus): HTMLElement {
   async function showPreview(install: boolean) {
     let preview;
     try {
-      preview = await Bridge.hooksPreview(install);
+      preview = await Bridge.hooksPreview(install, agent);
     } catch (err) {
       // An unreadable or invalid settings.json stops here rather than being
       // treated as empty and written over.
@@ -134,9 +166,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     body.append(
       h("div", {
         class: "hint",
-        text: install
-          ? "This is exactly what will change in your settings.json. Your own hooks are left untouched."
-          : "This removes Coucou's entries only. Your own hooks are left untouched.",
+        text: install ? copy.install : copy.remove,
       }),
       renderDiff(preview.diff),
       h("div", { class: "row" },
@@ -150,11 +180,11 @@ function claudeSection(status: HookStatus): HTMLElement {
     confirm.addEventListener("click", async () => {
       confirm.disabled = true;
       try {
-        const backup = await Bridge.hooksApply(install, preview.fingerprint);
+        const backup = await Bridge.hooksApply(install, preview.fingerprint, agent);
         clear(body);
         body.append(h("div", {
           class: "notice ok",
-          text: `Done. Previous settings saved as ${backup}. Open a new Claude Code session to pick the hooks up.`,
+          text: `Done. Previous file saved as ${backup}. Start a new ${copy.title} session to pick the hooks up.`,
         }));
         window.setTimeout(() => void rebuild(), 2600);
       } catch (err) {
@@ -573,7 +603,9 @@ async function main() {
   clear(root);
   root.append(
     h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
-    claudeSection(status),
+    hookSection("claude", status),
+    hookSection("gemini", (await Bridge.hooksStatus("gemini")) ?? { ...status, installed: false, settingsPath: "" }),
+    hookSection("antigravity", (await Bridge.hooksStatus("antigravity")) ?? { ...status, installed: false, settingsPath: "" }),
     await providersSection(),
     translatorSection(hasTranslateKey),
     integrationsSection(present),
