@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: a file dropped on the folded island goes through its whole animation to the "what do you want to do with it" card instead of stopping at 0 %
 - Windows: drag Mochi onto any window to attach it to the chat, as on macOS: the island names the window under the cursor during the drag, and a browser's page address comes along
 - Windows: "Open terminal" brings back the exact window a Claude Code, Gemini CLI or Antigravity session runs in (Windows Terminal, a console, or the VS Code window of that folder) instead of opening the folder
 - Windows and Linux: Settings → Active pills, as on macOS: declare the coding tools, agents, AI providers and services shown in the island (up to four besides VS Code) and pick the main pill; AI pills open the chat on their provider
