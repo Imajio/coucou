@@ -5,8 +5,8 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
 import {
   EXPANDED_CORNER, EXPANDED_W, NOTCH_W, PANEL_H, PANEL_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight,
-  islandSize,
+  RESUMABLE_VIEWS, ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
+  chatPromptHeight, islandSize, resumeView,
   type IslandMode, type IslandViewName,
 } from "../core/layout";
 import { Sound } from "../core/sound";
@@ -34,6 +34,17 @@ const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
 
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
+
+/** Where the last tab is kept between launches. Local to this machine. */
+const LAST_TAB_KEY = "coucou.island.lastTab";
+
+function loadLastTab(): string | null {
+  try {
+    return localStorage.getItem(LAST_TAB_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export class Island {
   readonly fsm = new IslandStateMachine();
@@ -86,6 +97,8 @@ export class Island {
   private confusedRecovery: number | null = null;
   private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
+  /** The last tab the user was on in the open island; see homeView(). */
+  private lastTab: string | null = loadLastTab();
 
   /** Drop sequence bookkeeping: last tick played, and whether the ✓ has fired. */
   private uploadTens = 0;
@@ -150,7 +163,8 @@ export class Island {
         this.fsm.pinned = false;
         State.updateTask("integration_claude", "working");
         State.setPillBadge("integration_claude", null);
-        this.setView(State.defaultView());
+        // Back to whatever the request interrupted.
+        this.setView(this.homeView());
       },
       toggleSound: () => {
         State.settings.soundEnabled = !State.settings.soundEnabled;
@@ -243,7 +257,8 @@ export class Island {
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "home":
-          this.expand(State.defaultView());
+          // Reopening: back to the tab that was left.
+          this.expand(this.homeView());
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "coucou":
@@ -257,6 +272,22 @@ export class Island {
 
   launch() {
     this.fsm.launch();
+  }
+
+  /** The view the island reopens on: the tab that was left, or the overview. */
+  homeView(): IslandViewName {
+    return resumeView(this.lastTab, State.defaultView());
+  }
+
+  /** Remembers a tab the user is on, across launches. */
+  private rememberTab(view: IslandViewName) {
+    if (!RESUMABLE_VIEWS.has(view) || view === this.lastTab) return;
+    this.lastTab = view;
+    try {
+      localStorage.setItem(LAST_TAB_KEY, view);
+    } catch {
+      // Storage unavailable: it is still remembered until the app quits.
+    }
   }
 
   // ── Mode / view ─────────────────────────────────────────────────────────────
@@ -889,6 +920,9 @@ export class Island {
       const wasText = this.lastSyncedView != null && TEXT_VIEWS.has(this.lastSyncedView);
       this.lastSyncedView = State.view;
       const view = State.view;
+      // Only a tab actually on screen counts: the folded island also carries a
+      // view (the overview after the launch greeting), which is not a choice.
+      if (expanded) this.rememberTab(view);
       if (TEXT_VIEWS.has(view)) {
         void Bridge.focusWindow(true);
         window.setTimeout(() => this.views.get(view)?.focus?.(), 120);

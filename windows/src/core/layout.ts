@@ -92,6 +92,24 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
 };
 
+/**
+ * Views the user goes to on purpose, from the header. Reopening the island
+ * returns to the last one; alert cards and the greeting never count, and
+ * neither does the drop zone, which a file dragged past opens on its own.
+ */
+export const RESUMABLE_VIEWS: ReadonlySet<IslandViewName> = new Set<IslandViewName>([
+  "overview", "empty", "prompt", "music", "translate", "settings",
+]);
+
+/**
+ * The view to reopen on: the tab that was left, or `overview` (the overview
+ * as it is now, which is "empty" when nothing runs).
+ */
+export function resumeView(saved: string | null, overview: IslandViewName): IslandViewName {
+  if (saved == null || saved === "overview" || saved === "empty") return overview;
+  return RESUMABLE_VIEWS.has(saved as IslandViewName) ? (saved as IslandViewName) : overview;
+}
+
 // The upload views above are only the fallback geometry. Once a file is actually
 // dropped the whole sequence — Mochi included — is drawn by src/upload, which
 // owns its own constants (USC) straight from UploadSequenceEngine.swift.

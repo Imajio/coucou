@@ -41,7 +41,7 @@ async function main() {
         break;
       case "open":
         setPaused(false);
-        island.alert(State.defaultView());
+        island.alert(island.homeView());
         // Opened on purpose: take the keyboard so Esc can close it again.
         void Bridge.focusWindow(true);
         break;
