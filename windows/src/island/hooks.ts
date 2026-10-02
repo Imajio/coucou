@@ -25,6 +25,8 @@ interface HookPayload {
   tool_input?: Record<string, unknown>;
   /** Optional agent tag: lowercase, digits and hyphens, ≤ 24 chars. */
   coucou_agent?: string;
+  /** The processes the session runs under, nearest first (added by the relay). */
+  host_pids?: number[];
 }
 
 /** Same rule as HookServer.validateAgent on macOS. "claude" is reserved. */
@@ -331,6 +333,13 @@ function handleHook(island: Island, payload: HookPayload) {
 
     default:
       break;
+  }
+
+  // Where the session runs, for "Open terminal".
+  const task = State.tasks.find((t) => t.id === agentId);
+  if (task) {
+    if (Array.isArray(payload.host_pids) && payload.host_pids.length) task.sessionPids = payload.host_pids;
+    if (isExternalAgent && cwd) task.sessionCwd = cwd;
   }
   State.notify();
 }

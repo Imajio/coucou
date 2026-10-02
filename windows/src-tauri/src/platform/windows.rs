@@ -12,12 +12,13 @@ use ::windows::Win32::Security::Authorization::ConvertSidToStringSidW;
 use ::windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
 use ::windows::Win32::System::Ole::RevokeDragDrop;
 use ::windows::Win32::System::SystemInformation::GetLocalTime;
-use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use ::windows::Win32::System::Threading::{AttachThreadInput, GetCurrentProcess, GetCurrentThreadId, OpenProcessToken};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW,
-    IsWindow, SetForegroundWindow, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW,
+    BringWindowToTop, EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindow,
+    GetWindowLongPtrW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
+    IsWindowVisible, SetForegroundWindow, SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, GW_OWNER,
+    SW_RESTORE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 use super::LocalTime;
@@ -259,3 +260,96 @@ pub fn activate_window(handle: isize) {
 
 /// Click-through here is the poll's WS_EX_TRANSPARENT toggle, not a region.
 pub fn set_input_region(_win: &WebviewWindow, _rect: Option<(f64, f64, f64, f64)>) {}
+
+// ── Session windows ("Open terminal") ─────────────────────────────────────────
+
+/// Visible, titled, unowned top-level windows of other processes: the ones a
+/// person would call "a window".
+fn top_windows() -> Vec<super::TopWindow> {
+    unsafe extern "system" fn collect(hwnd: HWND, data: LPARAM) -> BOOL {
+        let out = unsafe { &mut *(data.0 as *mut Vec<super::TopWindow>) };
+        unsafe {
+            if !IsWindowVisible(hwnd).as_bool() || GetWindow(hwnd, GW_OWNER).is_ok_and(|o| !o.is_invalid()) {
+                return true.into();
+            }
+            if GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOOLWINDOW.0 as isize != 0 {
+                return true.into();
+            }
+            let mut buf = [0u16; 512];
+            let len = GetWindowTextW(hwnd, &mut buf);
+            if len <= 0 {
+                return true.into();
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != std::process::id() {
+                out.push(super::TopWindow {
+                    handle: hwnd.0 as isize,
+                    pid,
+                    title: String::from_utf16_lossy(&buf[..len as usize]),
+                });
+            }
+        }
+        true.into()
+    }
+    let mut out: Vec<super::TopWindow> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(collect), LPARAM(&mut out as *mut _ as isize));
+    }
+    out
+}
+
+/// Console hosts (conhost, OpenConsole) by the process whose console they draw.
+fn console_hosts() -> std::collections::HashMap<u32, Vec<u32>> {
+    use ::windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    let mut map: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    unsafe {
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return map };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snapshot, &mut entry).is_ok() {
+            loop {
+                let len = entry.szExeFile.iter().position(|c| *c == 0).unwrap_or(entry.szExeFile.len());
+                let exe = String::from_utf16_lossy(&entry.szExeFile[..len]).to_lowercase();
+                if exe == "conhost.exe" || exe == "openconsole.exe" {
+                    map.entry(entry.th32ParentProcessID).or_default().push(entry.th32ProcessID);
+                }
+                if Process32NextW(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snapshot);
+    }
+    map
+}
+
+/// Brings back the window a session runs in. False when none of its host
+/// processes has a window any more (the terminal was closed).
+pub fn focus_session_window(host_pids: &[u32], project: Option<&str>) -> bool {
+    let Some(handle) = super::pick_session_window(host_pids, &console_hosts(), &top_windows(), project) else {
+        return false;
+    };
+    let hwnd = HWND(handle as *mut _);
+    unsafe {
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        // Windows' foreground lock accepts the call and then does nothing.
+        // Sharing the input state of the window that has the keyboard (the
+        // island, just clicked) for the duration of the switch makes it stick.
+        let me = GetCurrentThreadId();
+        let holder = GetWindowThreadProcessId(GetForegroundWindow(), None);
+        let attached = holder != 0 && holder != me && AttachThreadInput(me, holder, true).as_bool();
+        let _ = BringWindowToTop(hwnd);
+        let ok = SetForegroundWindow(hwnd).as_bool();
+        if attached {
+            let _ = AttachThreadInput(me, holder, false);
+        }
+        ok && GetForegroundWindow() == hwnd
+    }
+}

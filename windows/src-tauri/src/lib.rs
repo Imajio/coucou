@@ -358,6 +358,19 @@ fn open_app(name: String) -> bool {
         .any(|c| platform::no_console(&mut Command::new(&c)).spawn().is_ok())
 }
 
+/// "Open terminal": brings back the window the session runs in (the terminal
+/// tab's window, or the VS Code window of that folder). False when it can't,
+/// and the island opens the folder instead.
+#[tauri::command]
+fn focus_session_window(pids: Vec<u32>, cwd: Option<String>) -> bool {
+    let project = cwd.as_deref().and_then(|c| {
+        std::path::Path::new(c.trim_end_matches(['/', '\\']))
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+    });
+    platform::focus_session_window(&pids, project.as_deref())
+}
+
 /// Refresh buttons in the integration cards.
 #[tauri::command]
 async fn refresh_integration(app: AppHandle, id: String) {
@@ -482,6 +495,7 @@ pub fn run() {
             refresh_integration,
             open_n8n,
             open_app,
+            focus_session_window,
             open_settings_window,
             set_paused,
             media::media_sessions,

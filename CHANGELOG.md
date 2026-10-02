@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows: "Open terminal" brings back the exact window a Claude Code, Gemini CLI or Antigravity session runs in (Windows Terminal, a console, or the VS Code window of that folder) instead of opening the folder
 - Windows and Linux: Settings → Active pills, as on macOS: declare the coding tools, agents, AI providers and services shown in the island (up to four besides VS Code) and pick the main pill; AI pills open the chat on their provider
 - Windows and Linux: Gemini CLI and Antigravity hooks install from Settings, with the same diff, backup and confirmation as Claude Code's; their sessions get their own pill with live steps
 - Windows and Linux: the chat works with Claude, OpenAI (GPT and Codex), Gemini, OpenRouter, a local Ollama or any OpenAI-compatible endpoint; switch provider or model in the middle of a conversation and the new model picks it up. The default Claude model is now Claude Opus 5.5

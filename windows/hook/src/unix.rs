@@ -112,3 +112,21 @@ fn server_is_same_user(stream: &UnixStream) -> bool {
         && len as usize == std::mem::size_of::<libc::ucred>()
         && cred.uid == unsafe { libc::getuid() }
 }
+
+/// Parents of this process's ancestors, read from /proc one step at a time.
+pub fn parent_map() -> std::collections::HashMap<u32, u32> {
+    let mut map = std::collections::HashMap::new();
+    let mut pid = std::process::id();
+    for _ in 0..crate::MAX_ANCESTORS {
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else { break };
+        // The command name may hold spaces and parentheses: read after the last ')'.
+        let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r) else { break };
+        let Some(ppid) = rest.split_whitespace().nth(1).and_then(|p| p.parse::<u32>().ok()) else { break };
+        map.insert(pid, ppid);
+        if ppid <= 1 {
+            break;
+        }
+        pid = ppid;
+    }
+    map
+}

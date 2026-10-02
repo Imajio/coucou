@@ -34,7 +34,7 @@ Meet **Mochi**: a soft little squircle with big eyes that pops out of your notch
 
 - 🤖 **Claude Code, Gemini CLI, Antigravity and other agents, live** — see every session in your notch: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Mochi does a happy little jump. Cursor and Codex pills are coming soon.
 - ✅ **Approve from the notch** — Claude Code permission requests show up with **Allow / Deny**. One click, back to work.
-- 🧑‍💻 **Jump to the right terminal** — open the exact terminal window of a session *(macOS)*.
+- 🧑‍💻 **Jump to the right terminal**: open the exact terminal window of a session.
 - 💬 **Chat with Claude, or with Gemini and OpenAI models using your own keys**: on macOS click the model name above the chat box, on Windows and Linux use the two menus above it, to switch provider and pick a model; the list comes from each API account. Windows and Linux also take OpenRouter, a local Ollama and any OpenAI-compatible server.
 - 📋 **Declare the tools you use**: open Settings → Active pills and choose which coding tools, agents and AI providers show up in the island. VS Code is always there; toggle Gemini CLI, Antigravity, Anthropic, Google AI, OpenAI and more. Check Cursor or Codex and you can make it your main pill, the one in the big card.
 - 📎 **Drop a file on the notch** — Mochi turns into a box and swallows it, then ask a question about it or send it by email *(email: macOS, Mail.app)*.

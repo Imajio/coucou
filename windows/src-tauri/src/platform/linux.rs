@@ -285,6 +285,12 @@ pub fn window_handle(_win: &WebviewWindow) -> isize {
     0
 }
 
+/// Windows on Wayland can't be raised by another app; "Open terminal" falls
+/// back to opening the folder.
+pub fn focus_session_window(_host_pids: &[u32], _project: Option<&str>) -> bool {
+    false
+}
+
 /// Giving up the keyboard (`set_activating(false)`) is all Linux can do; the
 /// compositor decides who gets it next.
 pub fn activate_window(_handle: isize) {}
