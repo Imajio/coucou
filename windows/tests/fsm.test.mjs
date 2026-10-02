@@ -213,3 +213,29 @@ test("re-applying the same value changes nothing", () => {
   paused.setAlwaysVisible(true, false, false);
   assert.equal(paused.state, "hidden");
 });
+
+// ── Typing in the open island ─────────────────────────────────────────────────
+
+test("typing restarts the auto-close countdown of the open island", () => {
+  const fsm = machine();
+  fsm.homeToPetitDelay = 5;
+  fsm.forceHome();
+  fsm.mouseLeft(); // the pointer is elsewhere: the countdown runs
+  advance(4);
+  fsm.activity();
+  advance(4);
+  assert.equal(fsm.state, "home");
+  advance(1.1);
+  assert.equal(fsm.state, "petit");
+});
+
+test("typing does not start a countdown that was not running", () => {
+  const fsm = machine();
+  cursorOnIsland = true;
+  fsm.homeToPetitDelay = 5;
+  fsm.forceHome();
+  fsm.mouseEntered();
+  fsm.activity();
+  advance(60);
+  assert.equal(fsm.state, "home");
+});

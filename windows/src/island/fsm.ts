@@ -123,6 +123,14 @@ export class IslandStateMachine {
     }
   }
 
+  /**
+   * The user is typing in the open island (chat, translator): a running
+   * auto-close countdown starts over, so it never folds mid-sentence.
+   */
+  activity() {
+    if (this.state === "home" && this.homeCollapse != null) this.scheduleHomeCollapse();
+  }
+
   /** Alert or explicit request: open straight to expanded. */
   forceHome() {
     this.cancelTimers();

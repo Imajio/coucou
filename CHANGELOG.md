@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: the open island no longer folds away while you type in the chat or the translator; auto-close counts from your last key
 - Windows and Linux: a Translate tab in the island translates with Google Translate, using your own Google Cloud Translation key from Settings, or opens the text on translate.google.com when there is no key
 - Windows and Linux: a Music tab in the island shows what is playing in browsers, Spotify and other players, with previous, play/pause, next and a volume slider for the chosen source
 - Windows: clicking the island gives it the keyboard, so `Esc` works there: an open island folds to compact, a compact one hides, and the keyboard goes back to the app you were in

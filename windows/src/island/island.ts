@@ -565,11 +565,25 @@ export class Island {
     // Esc closes one stage at a time: open, then compact, then hidden. A card
     // waiting for an answer (pinned) stays put.
     window.addEventListener("keydown", (e) => {
-      State.lastActivity = performance.now();
       if (e.key !== "Escape" || State.isPinned) return;
       if (State.mode === "expanded") this.collapse();
       else if (State.mode === "compact") this.fsm.forceHidden();
     });
+    // Any key typed in the island counts as using it, so the auto-close
+    // countdown starts over. Capture phase: text fields stop their keys from
+    // bubbling (the chat does), and this must still see them.
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        State.lastActivity = performance.now();
+        if (e.key === "Escape") return;
+        this.fsm.activity();
+        if (this.homeCollapseAt != null) {
+          this.homeCollapseAt = performance.now() + State.settings.autoCloseInterval * 1000;
+        }
+      },
+      true,
+    );
 
     void onDragDrop((e) => this.onDragDrop(e));
 
