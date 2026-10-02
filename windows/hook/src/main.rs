@@ -37,12 +37,15 @@ const MAX_FIELD_LEN: usize = 2_000;
 #[cfg(windows)]
 mod win;
 #[cfg(windows)]
-use win::connect;
+use win::{connect, parent_map};
 
 #[cfg(target_os = "linux")]
 mod unix;
 #[cfg(target_os = "linux")]
-use unix::connect;
+use unix::{connect, parent_map};
+
+/// How far up the process tree the relay looks for the session's terminal.
+const MAX_ANCESTORS: usize = 12;
 
 fn main() {
     let Some((payload, event, agent)) = read_event() else { std::process::exit(0) };
@@ -249,11 +252,39 @@ fn read_event() -> Option<(String, String, String)> {
         }
     }
 
+    // The processes this session runs under, nearest first: the shell, the
+    // agent, then the terminal or editor holding it. The island's "Open
+    // terminal" brings that exact window back, the way macOS activates its
+    // terminal app.
+    if let Some(map) = payload.as_object_mut() {
+        if !map.contains_key("host_pids") {
+            let pids = ancestors(std::process::id(), &parent_map(), MAX_ANCESTORS);
+            map.insert("host_pids".into(), serde_json::json!(pids));
+        }
+    }
+
     truncate_strings(&mut payload);
 
     let mut line = payload.to_string();
     line.push('\n');
     Some((line, event, agent))
+}
+
+/// Follows parent links from `pid` (excluded), stopping at the system, at a
+/// loop, or after `max` steps.
+fn ancestors(pid: u32, parents: &std::collections::HashMap<u32, u32>, max: usize) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut current = pid;
+    while out.len() < max {
+        let Some(&parent) = parents.get(&current) else { break };
+        // 0 and 4 are the idle and system processes on Windows, 1 is init.
+        if parent <= 4 || parent == pid || out.contains(&parent) {
+            break;
+        }
+        out.push(parent);
+        current = parent;
+    }
+    out
 }
 
 /// Caps every string in the payload. A single Write can carry a whole file.
@@ -386,5 +417,27 @@ mod normalize_tests {
         assert!(expects_json_answer("antigravity"));
         assert!(!expects_json_answer(""));
         assert!(!expects_json_answer("my-agent"));
+    }
+}
+
+#[cfg(test)]
+mod ancestor_tests {
+    use super::ancestors;
+    use std::collections::HashMap;
+
+    #[test]
+    fn the_chain_goes_up_to_the_terminal_and_stops() {
+        // relay 50 → bash 40 → claude 30 → pwsh 20 → WindowsTerminal 10 → explorer 4
+        let parents: HashMap<u32, u32> = [(50, 40), (40, 30), (30, 20), (20, 10), (10, 4)].into();
+        assert_eq!(ancestors(50, &parents, 12), [40, 30, 20, 10]);
+        assert_eq!(ancestors(50, &parents, 2), [40, 30]);
+    }
+
+    #[test]
+    fn a_loop_or_a_missing_parent_ends_the_walk() {
+        let looped: HashMap<u32, u32> = [(50, 40), (40, 30), (30, 40)].into();
+        assert_eq!(ancestors(50, &looped, 12), [40, 30]);
+        let orphan: HashMap<u32, u32> = HashMap::new();
+        assert!(ancestors(50, &orphan, 12).is_empty());
     }
 }

@@ -23,6 +23,8 @@ export interface AgentTask {
   miniEye?: EyeShape | null;
   pillBadge?: PillBadge | null;
   sessionCwd?: string | null;
+  /** The processes the session runs under, nearest first (from the relay). */
+  sessionPids?: number[] | null;
 }
 
 export interface ApprovalInfo {

@@ -10,7 +10,7 @@ import {
   type IslandMode, type IslandViewName,
 } from "../core/layout";
 import { Sound } from "../core/sound";
-import { State } from "../core/state";
+import { State, type AgentTask } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
@@ -34,6 +34,17 @@ const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
 
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
+
+/**
+ * "Open terminal": the exact window the session runs in, the way macOS brings
+ * its terminal app forward. When that window is gone (or unknown), the
+ * session's folder opens in VS Code instead.
+ */
+async function openSession(task: AgentTask | null) {
+  const cwd = task?.sessionCwd ?? null;
+  if (task?.sessionPids?.length && (await Bridge.focusSessionWindow(task.sessionPids, cwd))) return;
+  void Bridge.openInVSCode(cwd);
+}
 
 /** Where the last tab is kept between launches. Local to this machine. */
 const LAST_TAB_KEY = "coucou.island.lastTab";
@@ -127,10 +138,7 @@ export class Island {
         State.setFocus(id);
         Sound.play("blip");
       },
-      openTerminal: () => {
-        const cwd = State.focusTask?.sessionCwd ?? null;
-        void Bridge.openInVSCode(cwd);
-      },
+      openTerminal: () => void openSession(State.focusTask),
       // The ↗ button — same targets as openAgentTarget() on macOS.
       openTarget: () => {
         const task = State.focusTask;
@@ -143,7 +151,7 @@ export class Island {
           integration_notion: "https://notion.so",
           integration_calcom: "https://app.cal.com/bookings",
         };
-        if (task.id === "integration_claude") void Bridge.openInVSCode(task.sessionCwd ?? null);
+        if (task.id === "integration_claude" || task.source === "agent") void openSession(task);
         else if (task.id === "integration_n8n") void Bridge.openN8n();
         else if (urls[task.id]) void Bridge.openUrl(urls[task.id]);
       },
