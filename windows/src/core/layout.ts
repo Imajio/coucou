@@ -22,6 +22,7 @@ export type IslandViewName =
   | "note"
   | "settings"
   | "music"
+  | "translate"
   | "greeting";
 
 export type BotStateName =
@@ -87,6 +88,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   note: { height: 160, botX: 60, botY: null, botDiameter: 50, agentMode: "column" },
   settings: { height: 160, botX: 54, botY: null, botDiameter: 46, agentMode: "none" },
   music: { height: 196, botX: 50, botY: null, botDiameter: 42, agentMode: "none" },
+  translate: { height: 244, botX: 50, botY: null, botDiameter: 42, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
 };
 

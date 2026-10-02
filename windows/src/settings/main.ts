@@ -254,6 +254,78 @@ function apiSection(hasKey: boolean): HTMLElement {
   );
 }
 
+// ── Translator section ────────────────────────────────────────────────────────
+
+const TRANSLATE_KEY = "google-translate-api-key";
+
+function translatorSection(hasKey: boolean): HTMLElement {
+  const dot = statusDot(hasKey);
+  const state = h("span", { class: "hint" });
+  const field = h("input", {
+    type: "password",
+    style: "flex:1 1 auto;min-width:0",
+    autocomplete: "off",
+    spellcheck: "false",
+  }) as HTMLInputElement;
+  const saveBtn = h("button", { class: "primary", text: "Save key" });
+  const clearBtn = h("button", { class: "danger", text: "Remove" });
+  const feedback = h("div", {});
+
+  function show(present: boolean) {
+    dot.style.background = present ? "#22c55e" : "#f4505e";
+    state.textContent = present
+      ? "Translations go to Google Cloud Translation with this key, only when you ask for one."
+      : "Without a key, the Translate tab opens Google Translate in your browser instead.";
+    field.placeholder = present ? "••••••••••••  (stored)" : "Google Cloud API key";
+    clearBtn.style.display = present ? "" : "none";
+  }
+
+  async function refresh() {
+    show((await Bridge.secretPresent(TRANSLATE_KEY)) ?? false);
+  }
+
+  saveBtn.addEventListener("click", async () => {
+    const value = field.value.trim();
+    if (!value) return;
+    clear(feedback);
+    try {
+      await Bridge.secretSet(TRANSLATE_KEY, value);
+      field.value = "";
+      feedback.append(h("div", { class: "notice ok", text: "Saved in the system's credential store." }));
+      await refresh();
+    } catch (err) {
+      feedback.append(h("div", { class: "notice err", text: `Could not save: ${String(err)}` }));
+    }
+  });
+
+  clearBtn.addEventListener("click", async () => {
+    clear(feedback);
+    try {
+      await Bridge.secretClear(TRANSLATE_KEY);
+      feedback.append(h("div", { class: "notice ok", text: "Key removed." }));
+      await refresh();
+    } catch (err) {
+      feedback.append(h("div", { class: "notice err", text: `Could not remove: ${String(err)}` }));
+    }
+  });
+
+  const howTo = h("button", {
+    text: "How to get a key",
+    onclick: () => void Bridge.openUrl("https://cloud.google.com/translate/docs/setup"),
+  });
+
+  show(hasKey);
+  return h(
+    "section",
+    {},
+    h("h2", {}, dot, h("span", { text: "Translator" })),
+    state,
+    h("div", { class: "row" }, h("label", { text: "API key" }), field, saveBtn, clearBtn),
+    h("div", { class: "row" }, h("label", { text: "" }), howTo),
+    feedback,
+  );
+}
+
 // ── Integrations section ──────────────────────────────────────────────────────
 
 interface IntegrationDef {
@@ -463,6 +535,7 @@ async function main() {
   };
 
   const hasKey = (await Bridge.secretPresent("anthropic-api-key")) ?? false;
+  const hasTranslateKey = (await Bridge.secretPresent(TRANSLATE_KEY)) ?? false;
 
   const keys = [
     "stripe-api-key", "github-token", "vercel-token",
@@ -476,6 +549,7 @@ async function main() {
     h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
     claudeSection(status),
     apiSection(hasKey),
+    translatorSection(hasTranslateKey),
     integrationsSection(present),
     generalSection(),
     h("div", {

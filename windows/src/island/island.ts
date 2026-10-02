@@ -24,6 +24,9 @@ const BOT_OVERHANG = 40;
 /** Same margin as the Rust hit test (src-tauri/src/island.rs). */
 const HIT_MARGIN = 14;
 
+/** Views with a text field: showing one gives the island the keyboard. */
+const TEXT_VIEWS: ReadonlySet<IslandViewName> = new Set(["prompt", "translate"]);
+
 /** The three views the drop sequence owns; leaving them stops the engine. */
 const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading", "choose"]);
 
@@ -866,15 +869,16 @@ export class Island {
       if (on) view.sync();
     }
 
-    // The chat is the only view with a text field, so it is the only time the
-    // island is allowed to take keyboard focus.
+    // Views with a text field (chat, translator) are the only ones that take
+    // keyboard focus on their own.
     if (this.lastSyncedView !== State.view) {
-      const wasChat = this.lastSyncedView === "prompt";
+      const wasText = this.lastSyncedView != null && TEXT_VIEWS.has(this.lastSyncedView);
       this.lastSyncedView = State.view;
-      if (State.view === "prompt") {
+      const view = State.view;
+      if (TEXT_VIEWS.has(view)) {
         void Bridge.focusWindow(true);
-        window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);
-      } else if (wasChat) {
+        window.setTimeout(() => this.views.get(view)?.focus?.(), 120);
+      } else if (wasText) {
         void Bridge.focusWindow(false);
       }
     }
