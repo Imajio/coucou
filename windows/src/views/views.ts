@@ -11,6 +11,8 @@ import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { buildMusic } from "./music";
+import { Bridge } from "../core/bridge";
+import { pickerModels, switchProvider } from "../core/models";
 import { buildTranslate } from "./translate";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
 
@@ -162,6 +164,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       State.notify();
     },
     openSettings: () => actions.openSettingsWindow(),
+    chatWith: (provider) => void chatWith(provider, actions),
   };
 
   return {
@@ -231,6 +234,25 @@ function buildOverview(actions: ViewActions): ViewHost {
       }
     },
   };
+}
+
+/**
+ * An AI pill's "Chat with…": the chat moves to that provider and opens at
+ * once, on the model last used there. When there is none yet, the provider's
+ * first model is picked as soon as its list arrives.
+ */
+async function chatWith(provider: string, actions: ViewActions) {
+  const patch = switchProvider(State.settings, provider, [], pickerModels(null, provider, ""));
+  Object.assign(State.settings, patch);
+  void Bridge.saveSettings(State.settings);
+  actions.setView("prompt");
+  if (patch.model) return;
+  const list = await Bridge.chatModels(provider).catch(() => null);
+  const s = State.settings;
+  if (!list?.length || s.provider !== provider || s.model) return;
+  Object.assign(s, switchProvider(s, provider, list));
+  void Bridge.saveSettings(s);
+  State.notify();
 }
 
 function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {

@@ -3,17 +3,30 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
-import { Bridge, onEvent, type HookAgent, type HookStatus } from "../core/bridge";
+import { Bridge, onEvent, type HookAgent, type HookStatus, type ProviderInfo } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
 import { buildModelPicker } from "../views/modelpicker";
+import {
+  CATEGORY_TITLES, MAIN_DEFAULT, MAX_ACTIVE, PILL_CATALOG, sanitizePills, togglePill, type PillDefinition,
+} from "../core/catalog";
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let version = "";
 
 const root = document.getElementById("settings-root")!;
 
+/**
+ * Saves made here that have not echoed back yet. Rust answers every save with a
+ * settings-changed event; applying our own echo late would undo a newer change
+ * (two quick toggles, the first echo landing after the second click).
+ */
+let pendingEchoes = 0;
+/** Re-renders sections that show settings changed elsewhere (the island). */
+const onExternalChange: (() => void)[] = [];
+
 async function save() {
+  pendingEchoes++;
   await Bridge.saveSettings(settings);
 }
 
@@ -413,33 +426,15 @@ const INTEGRATIONS: IntegrationDef[] = [
     fields: [{ key: "calcom-api-key", label: "API key", placeholder: "cal_…", secret: true }] },
 ];
 
-const MAX_ACTIVE = 4;
 
 function integrationsSection(present: Record<string, boolean>): HTMLElement {
-  const note = h("div", { class: "hint" });
+  const note = h("div", {
+    class: "hint",
+    text: "Keys for the service pills. Which pills show up is chosen in Active pills. Keys are stored in the Windows Credential Manager, never on disk.",
+  });
   const list = h("div", { style: "display:flex;flex-direction:column;gap:14px" });
 
-  function updateNote() {
-    const used = settings.activeIntegrations.length;
-    note.textContent = `Pick up to ${MAX_ACTIVE} pills to show next to Mochi — ${used}/${MAX_ACTIVE} in use. Keys are stored in the Windows Credential Manager, never on disk.`;
-  }
-
   for (const def of INTEGRATIONS) {
-    const active = settings.activeIntegrations.includes(def.id);
-    const sw = h("button", { class: active ? "switch on" : "switch" });
-    sw.addEventListener("click", () => {
-      const on = settings.activeIntegrations.includes(def.id);
-      if (on) {
-        settings.activeIntegrations = settings.activeIntegrations.filter((x) => x !== def.id);
-      } else {
-        if (settings.activeIntegrations.length >= MAX_ACTIVE) return;
-        settings.activeIntegrations = [...settings.activeIntegrations, def.id];
-      }
-      sw.classList.toggle("on", !on);
-      updateNote();
-      void save();
-    });
-
     const rows = h("div", { style: "display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-width:0" });
     for (const field of def.fields) {
       const input = h("input", {
@@ -474,7 +469,6 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
     list.append(
       h("div", { style: "display:flex;gap:12px;align-items:flex-start" },
         h("div", { style: "display:flex;align-items:center;gap:8px;min-width:132px;padding-top:4px" },
-          sw,
           h("i", { class: "dot", style: `background:${def.color}` }),
           h("span", { style: "font-size:12.5px", text: def.name }),
         ),
@@ -483,8 +477,101 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
     );
   }
 
-  updateNote();
   return h("section", {}, h("h2", {}, h("span", { text: "Integrations" })), note, list);
+}
+
+// ── Active pills section ──────────────────────────────────────────────────────
+
+/** Why a pill can't do much yet, shown before its switch. */
+async function pillHint(def: PillDefinition, providers: ProviderInfo[]): Promise<string> {
+  if (def.comingSoon) return "Coming soon";
+  if (def.hookAgent) {
+    const status = await Bridge.hooksStatus(def.hookAgent);
+    return status?.installed ? "" : "Hooks not installed";
+  }
+  if (def.provider) {
+    const p = providers.find((x) => x.id === def.provider);
+    return p && (p.hasKey || !p.keyRequired) ? "" : "Key not configured";
+  }
+  return "";
+}
+
+async function activePillsSection(): Promise<HTMLElement> {
+  const providers = (await Bridge.chatProviders()) ?? [];
+  const counter = h("div", { class: "hint" });
+  const mainRow = h("div", { class: "row" });
+  const mainSel = h("select", {}) as HTMLSelectElement;
+  mainRow.append(h("label", { text: "Main pill" }), mainSel);
+  const switches = new Map<string, HTMLElement>();
+
+  function render() {
+    const pills = sanitizePills({ active: settings.activeIntegrations, mainPill: settings.mainPill });
+    const used = pills.active.length;
+    counter.textContent = `${used}/${MAX_ACTIVE} slots used`;
+    counter.style.color = used >= MAX_ACTIVE ? "#f5a524" : "";
+    for (const [id, sw] of switches) {
+      const on = pills.active.includes(id);
+      sw.classList.toggle("on", on);
+      (sw as HTMLButtonElement).disabled = !on && used >= MAX_ACTIVE;
+    }
+    // A main pill other than VS Code is possible once Cursor or Codex is declared.
+    const workspace = PILL_CATALOG.filter((p) => p.category === "workspace" && p.id !== MAIN_DEFAULT && pills.active.includes(p.id));
+    mainRow.style.display = workspace.length ? "" : "none";
+    clear(mainSel);
+    mainSel.append(h("option", { value: MAIN_DEFAULT, text: "VS Code" }));
+    for (const p of workspace) mainSel.append(h("option", { value: p.id, text: p.name }));
+    mainSel.value = pills.mainPill;
+  }
+
+  function commit(next: { active: string[]; mainPill: string }) {
+    settings.activeIntegrations = next.active;
+    settings.mainPill = next.mainPill;
+    render();
+    void save();
+  }
+
+  mainSel.addEventListener("change", () => {
+    commit(sanitizePills({ active: settings.activeIntegrations, mainPill: mainSel.value }));
+  });
+
+  const groups = h("div", { style: "display:flex;flex-direction:column;gap:12px" });
+  for (const category of ["workspace", "agent", "ai", "service"] as const) {
+    const defs = PILL_CATALOG.filter((p) => p.category === category && p.id !== MAIN_DEFAULT);
+    if (!defs.length) continue;
+    groups.append(h("div", { class: "pill-group", text: CATEGORY_TITLES[category] }));
+    for (const def of defs) {
+      const sw = h("button", { class: "switch" });
+      sw.addEventListener("click", () => {
+        commit(togglePill(sanitizePills({ active: settings.activeIntegrations, mainPill: settings.mainPill }), def.id));
+      });
+      switches.set(def.id, sw);
+      const hint = h("span", { class: "hint", text: "" });
+      void pillHint(def, providers).then((t) => (hint.textContent = t));
+      groups.append(h("div", { class: "row" },
+        h("i", { class: "dot", style: `background:${def.color}` }),
+        h("span", { style: "font-size:12.5px;flex:1 1 auto", text: def.name }),
+        hint,
+        sw,
+      ));
+    }
+  }
+
+  render();
+  onExternalChange.push(render);
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: "Active pills" })),
+    h("div", { class: "row" },
+      h("i", { class: "dot", style: "background:#F5F6F8" }),
+      h("span", { style: "font-size:12.5px;flex:1 1 auto", text: "VS Code" }),
+      h("span", { class: "hint", text: "Always active" }),
+    ),
+    h("div", { class: "hint", text: "Choose the tools you use. Coucou only shows what you declare here." }),
+    counter,
+    mainRow,
+    groups,
+  );
 }
 
 // ── General section ───────────────────────────────────────────────────────────
@@ -608,6 +695,7 @@ async function main() {
     hookSection("antigravity", (await Bridge.hooksStatus("antigravity")) ?? { ...status, installed: false, settingsPath: "" }),
     await providersSection(),
     translatorSection(hasTranslateKey),
+    await activePillsSection(),
     integrationsSection(present),
     generalSection(),
     h("div", {
@@ -617,7 +705,12 @@ async function main() {
   );
 
   void onEvent<Settings>("settings-changed", (s) => {
+    if (pendingEchoes > 0) {
+      pendingEchoes--;
+      return;
+    }
     settings = { ...settings, ...s };
+    for (const refresh of onExternalChange) refresh();
   });
 }
 

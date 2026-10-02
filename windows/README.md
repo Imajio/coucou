@@ -112,6 +112,15 @@ in time, Coucou stays quiet and Claude Code asks in the terminal as usual.
 
 It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
+### Active pills
+
+**Settings… → Active pills** decides which pills sit next to Mochi: VS Code is
+always there, and up to four more from the coding tools (Cursor, Codex), the
+agents (Gemini CLI, Antigravity), the AI providers for the chat and the
+services. Each row says what is still missing (hooks, a key). Declare Cursor or
+Codex and it can become the **main pill**, the one in the big card. An AI pill's
+card has **Chat with…**, which moves the chat to that provider and opens it.
+
 ### Gemini CLI and Antigravity
 
 **Settings… → Gemini CLI** and **Settings… → Antigravity** install the same relay

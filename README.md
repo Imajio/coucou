@@ -35,8 +35,8 @@ Meet **Mochi**: a soft little squircle with big eyes that pops out of your notch
 - 🤖 **Claude Code, Gemini CLI, Antigravity and other agents, live** — see every session in your notch: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Mochi does a happy little jump. Cursor and Codex pills are coming soon.
 - ✅ **Approve from the notch** — Claude Code permission requests show up with **Allow / Deny**. One click, back to work.
 - 🧑‍💻 **Jump to the right terminal** — open the exact terminal window of a session *(macOS)*.
-- 💬 **Chat with Claude, or with Gemini and OpenAI models using your own keys** *(Gemini and OpenAI: macOS)* — click the model name above the chat box to switch provider and pick a model; the list comes from each API account.
-- 📋 **Declare the tools you use** — open Settings → Active pills and choose which coding tools, agents and AI providers show up in the island. VS Code is always there; toggle Gemini CLI, Antigravity, Anthropic, Google AI, OpenAI and more. Check Cursor or Codex and you can make it your main pill, the one in the big card *(macOS)*.
+- 💬 **Chat with Claude, or with Gemini and OpenAI models using your own keys**: on macOS click the model name above the chat box, on Windows and Linux use the two menus above it, to switch provider and pick a model; the list comes from each API account. Windows and Linux also take OpenRouter, a local Ollama and any OpenAI-compatible server.
+- 📋 **Declare the tools you use**: open Settings → Active pills and choose which coding tools, agents and AI providers show up in the island. VS Code is always there; toggle Gemini CLI, Antigravity, Anthropic, Google AI, OpenAI and more. Check Cursor or Codex and you can make it your main pill, the one in the big card.
 - 📎 **Drop a file on the notch** — Mochi turns into a box and swallows it, then ask a question about it or send it by email *(email: macOS, Mail.app)*.
 - 🪟 **Drag Mochi onto any window** — attach that window as context for Claude *(macOS)*.
 - 🔌 **Integrations** — Stripe payments, n8n workflows, GitHub, Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Mochi.
@@ -132,9 +132,9 @@ Click the Coucou icon in the menu bar (macOS) or in the system tray (Windows, Li
 | **Gemini CLI hooks** | Gemini CLI sessions in the island | **Install hooks** in Settings → Gemini CLI, which backs up `~/.gemini/settings.json` |
 | **Antigravity (agy) hooks** | agy sessions in the island | **Install hooks** in Settings → Antigravity, which backs up `~/.gemini/config/hooks.json` |
 | **Anthropic API key** | chat and questions about files | Settings → Anthropic API · Keychain / Windows Credential Manager / Secret Service |
-| **Google AI API key** *(macOS)* | chat with Google AI (Gemini) | Settings → Chat — other providers · Keychain |
-| **OpenAI API key** *(macOS)* | chat with OpenAI | Settings → Chat — other providers · Keychain |
-| **Active pills** *(macOS)* | choose which tools and agents appear in the island | Settings → Active pills |
+| **Google AI API key** | chat with Google AI (Gemini) | macOS: Settings → Chat, other providers · Windows/Linux: Settings → AI providers |
+| **OpenAI API key** | chat with OpenAI | macOS: Settings → Chat, other providers · Windows/Linux: Settings → AI providers |
+| **Active pills** | choose which tools and agents appear in the island | Settings → Active pills |
 | Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Keychain / Windows Credential Manager / Secret Service, all optional |
 
 If Coucou isn't running, the hook exits immediately: **Claude Code is never blocked.**
@@ -150,7 +150,7 @@ If Coucou isn't running, the hook exits immediately: **Claude Code is never bloc
 | Click 3 times fast | 😵‍💫 dizzy for a few seconds |
 | Drag a file onto the island | turns into a box and swallows it |
 | Drag Mochi onto a window *(macOS)* | attaches it as context |
-| Click the model name above the chat box *(macOS)* | switch AI provider or model |
+| Click the model name above the chat box (macOS), or use the menus above it (Windows, Linux) | switch AI provider or model |
 
 ## How it works
 

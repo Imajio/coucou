@@ -3,6 +3,7 @@
 // the pill isn't focused, plays a sound, and clears itself after 60 s.
 
 import { onEvent, Bridge, type IntegrationUpdate } from "../core/bridge";
+import { PILL_CATALOG } from "../core/catalog";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import type { Island } from "./island";
@@ -31,6 +32,19 @@ export async function refreshConfigured() {
     const present = (await Bridge.secretPresent(key)) ?? false;
     const info = State.integrations[id] ?? { data: {}, error: null, loaded: false, configured: false };
     State.integrations[id] = { ...info, configured: present };
+  }
+  // Agent pills are about hooks, AI pills about the chat provider's key.
+  const providers = (await Bridge.chatProviders()) ?? [];
+  for (const def of PILL_CATALOG) {
+    let configured: boolean | null = null;
+    if (def.hookAgent) configured = (await Bridge.hooksStatus(def.hookAgent))?.installed ?? false;
+    if (def.provider) {
+      const p = providers.find((x) => x.id === def.provider);
+      configured = p ? p.hasKey || !p.keyRequired : false;
+    }
+    if (configured === null) continue;
+    const info = State.integrations[def.id] ?? { data: {}, error: null, loaded: false, configured: false };
+    State.integrations[def.id] = { ...info, configured };
   }
   const hooks = State.settings.hooksInstalled;
   const claude = State.integrations.integration_claude ?? {
