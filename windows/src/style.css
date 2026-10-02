@@ -1814,3 +1814,30 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.05);
 }
+
+/* ── Drag Mochi onto a window ───────────────────────────────────────────── */
+
+#attach-label {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%) translateY(4px);
+  max-width: 80%;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+  font: 500 11.5px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 5;
+}
+
+#attach-label.on {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

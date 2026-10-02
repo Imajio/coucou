@@ -40,6 +40,21 @@ function contextChip(label: string): HTMLElement {
   return chip;
 }
 
+/** The chat's context as Rust takes it. */
+function chatContext(): ChatContext | null {
+  const ctx = State.promptContext;
+  if (ctx?.kind === "window") return { kind: "window", appName: ctx.appName, title: ctx.title, url: ctx.url };
+  const file = State.droppedFile;
+  return file ? { kind: "file", name: file.name, path: file.path } : null;
+}
+
+/** The chip above the chat: the file's name, or the window's app and title. */
+function contextLabel(): string {
+  const ctx = State.promptContext;
+  if (ctx?.kind === "window") return ctx.title ? `${ctx.appName}: ${ctx.title}` : ctx.appName;
+  return State.droppedFile?.name ?? "";
+}
+
 export function buildPrompt(actions: ViewActions, onHeightChange: () => void): ViewHost {
   // Provider and model, switchable at any point: the conversation carries over.
   const picker = buildModelPicker({
@@ -91,9 +106,9 @@ export function buildPrompt(actions: ViewActions, onHeightChange: () => void): V
     State.notify();
     onHeightChange();
 
-    const file = State.droppedFile;
-    const context: ChatContext | null =
-      State.chatHistory.length === 1 && file ? { kind: "file", name: file.name, path: file.path } : null;
+    // What the chat is about (a dropped file, a window Mochi was dropped on)
+    // goes along with the first message.
+    const context: ChatContext | null = State.chatHistory.length === 1 ? chatContext() : null;
 
     try {
       const reply = await Bridge.chatSend(query, context);
@@ -126,8 +141,7 @@ export function buildPrompt(actions: ViewActions, onHeightChange: () => void): V
     el,
     sync() {
       picker.sync();
-      const file = State.droppedFile;
-      const wantChip = file?.name ?? "";
+      const wantChip = contextLabel();
       if (chipRow.dataset.label !== wantChip) {
         chipRow.dataset.label = wantChip;
         clear(chipRow);

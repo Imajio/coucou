@@ -105,6 +105,11 @@ export const Bridge = {
   refreshIntegration: (id: string) => call<void>("refresh_integration", { id }),
   /** Opens the configured n8n instance in the browser. */
   openN8n: () => call<void>("open_n8n"),
+  /**
+   * The app window under the cursor, for dropping Mochi on it. `withUrl` also
+   * reads a browser's address bar, which takes a moment: only on drop.
+   */
+  windowAtCursor: (withUrl: boolean) => call<WindowInfo | null>("window_at_cursor", { withUrl }),
   /** Brings back the window a session runs in; false when it can't. */
   focusSessionWindow: (pids: number[], cwd: string | null) =>
     call<boolean>("focus_session_window", { pids, cwd }).then((ok) => ok ?? false),
@@ -133,6 +138,12 @@ export const Bridge = {
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
 };
+
+export interface WindowInfo {
+  appName: string;
+  title: string;
+  url: string | null;
+}
 
 export interface ProviderInfo {
   id: string;

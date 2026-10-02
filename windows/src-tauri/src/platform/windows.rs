@@ -353,3 +353,89 @@ pub fn focus_session_window(host_pids: &[u32], project: Option<&str>) -> bool {
         ok && GetForegroundWindow() == hwnd
     }
 }
+
+// ── Window under the cursor (drag Mochi onto a window) ────────────────────────
+
+/// Lowercase executable stem of a process: `C:\\…\\msedge.exe` → `msedge`.
+fn process_stem(pid: u32) -> Option<String> {
+    use ::windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len).is_ok();
+        let _ = CloseHandle(handle);
+        if !ok {
+            return None;
+        }
+        let path = String::from_utf16_lossy(&buf[..len as usize]);
+        std::path::Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_lowercase())
+    }
+}
+
+/// The page address in a browser window, read from its address bar through UI
+/// Automation (the first edit field of the window is the address bar in
+/// Chromium browsers and Firefox).
+fn browser_address(hwnd: HWND) -> Option<String> {
+    use ::windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
+    use ::windows::Win32::System::Variant::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0, VT_I4};
+    use ::windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationValuePattern, TreeScope_Descendants,
+        UIA_ControlTypePropertyId, UIA_EditControlTypeId, UIA_ValuePatternId,
+    };
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+        let root = automation.ElementFromHandle(hwnd).ok()?;
+        let edit_type = VARIANT {
+            Anonymous: VARIANT_0 {
+                Anonymous: std::mem::ManuallyDrop::new(VARIANT_0_0 {
+                    vt: VT_I4,
+                    wReserved1: 0,
+                    wReserved2: 0,
+                    wReserved3: 0,
+                    Anonymous: VARIANT_0_0_0 { lVal: UIA_EditControlTypeId.0 },
+                }),
+            },
+        };
+        let condition = automation.CreatePropertyCondition(UIA_ControlTypePropertyId, &edit_type).ok()?;
+        let bar = root.FindFirst(TreeScope_Descendants, &condition).ok()?;
+        let value: IUIAutomationValuePattern = bar.GetCurrentPatternAs(UIA_ValuePatternId).ok()?;
+        let text = value.CurrentValue().ok()?.to_string();
+        super::address_to_url(&text)
+    }
+}
+
+/// The app window under the cursor: its name, title and, for a browser and
+/// when asked, the page's address. None over Coucou itself, the desktop or the
+/// taskbar.
+pub fn window_at_cursor(with_url: bool) -> Option<super::WindowInfo> {
+    use ::windows::Win32::UI::WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT};
+    let (x, y) = cursor_physical()?;
+    unsafe {
+        let hit = WindowFromPoint(POINT { x: x as i32, y: y as i32 });
+        if hit.is_invalid() {
+            return None;
+        }
+        let hwnd = GetAncestor(hit, GA_ROOT);
+        let mut class = [0u16; 128];
+        let len = GetClassNameW(hwnd, &mut class);
+        let class = String::from_utf16_lossy(&class[..len.max(0) as usize]);
+        if ["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"].contains(&class.as_str()) {
+            return None;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 || pid == std::process::id() {
+            return None;
+        }
+        let stem = process_stem(pid).unwrap_or_default();
+        let mut buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, &mut buf);
+        let title = String::from_utf16_lossy(&buf[..len.max(0) as usize]);
+        let url = if with_url && super::BROWSERS.contains(&stem.as_str()) { browser_address(hwnd) } else { None };
+        Some(super::WindowInfo { app_name: super::app_display_name(&stem), title, url })
+    }
+}

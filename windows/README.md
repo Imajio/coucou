@@ -44,6 +44,7 @@ installs for the current user only — no admin prompt.
 | Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Mochi for two seconds | Hearts |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
+| Drag Mochi out of the open island onto any window | The island names the window as you go; let go and the chat opens with that window attached (app, title and, for a browser, the page's address) |
 | Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
 | Music tab (♫) in the open island | What is playing, with previous, play/pause, next and volume |
 | Translate tab (globe) in the open island | Google Translate: pick the languages, type, press `Enter` |
@@ -225,8 +226,7 @@ problems. It stays on your machine.
   the top edge instead of hiding in a notch.
 - Permission approval works from **any** terminal; the Mac build only listens to
   VS Code sessions.
-- Not in this version: sending a file by email and dragging Mochi onto a window
-  to attach it as context.
+- Not in this version: sending a file by email.
 - Cal.com shows the next bookings as a list rather than the Mac's calendar.
 
 ## Linux
