@@ -114,9 +114,27 @@ It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
 ## Chat and keys
 
-**Settings… → Claude** takes your Anthropic API key. Keys live in the **Windows
-Credential Manager**, never on disk and never in the interface — the island can
-only ask whether a key exists. Same for every integration key.
+The chat works with several AI providers, and you can switch at any point of a
+conversation: the two menus above the chat pick the provider and the model, and
+the next answer comes from the new model with the whole conversation so far.
+
+| Provider | What you need |
+|---|---|
+| Claude | An Anthropic API key. The only one with web search. |
+| OpenAI | An OpenAI API key. GPT models and the Codex models. |
+| Gemini | A Google AI Studio API key. |
+| OpenRouter | An OpenRouter key: hundreds of models from every vendor behind one key. |
+| Ollama | Nothing: models running on this computer. |
+| Custom endpoint | The address of any OpenAI-compatible server (LM Studio, Groq, DeepSeek, Mistral…) and its key, if it takes one. |
+
+Keys go in **Settings… → AI providers**. Each provider's model list is asked of
+the provider itself, so new models show up without an app update. Claude, OpenAI
+and OpenRouter read dropped PDFs; elsewhere the model is told a PDF is there but
+can't open it.
+
+Keys live in the **Windows Credential Manager**, never on disk and never in the
+interface; the island can only ask whether a key exists, and each key is only
+ever sent to its own provider. Same for every integration key.
 
 No telemetry. The only network requests Coucou makes are to the services you
 configure yourself.

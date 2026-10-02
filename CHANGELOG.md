@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: the chat works with Claude, OpenAI (GPT and Codex), Gemini, OpenRouter, a local Ollama or any OpenAI-compatible endpoint; switch provider or model in the middle of a conversation and the new model picks it up. The default Claude model is now Claude Opus 5.5
 - Windows and Linux: changing the text or the languages while a translation is on its way now translates the newest text instead of leaving an old result on screen
 - Windows and Linux: the Translate tab is free with no setup, through Google Translate's public web service; a Google Cloud key stays optional, for the official API
 - Windows and Linux: the island reopens on the tab you left it on, including after a restart, and goes back to it once a permission request is answered

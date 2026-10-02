@@ -16,10 +16,20 @@ pub struct Settings {
     pub screen: String,
     pub autostart: bool,
     pub hooks_installed: bool,
-    /// Claude model used by the chat. Changeable in the settings window.
-    /// Defaulted explicitly so a settings.json written by an older build still loads.
+    /// AI provider the chat talks to (see llm::PROVIDERS).
+    #[serde(default = "default_provider")]
+    pub provider: String,
+    /// Model used by the chat, on `provider`. Changeable in the chat and in the
+    /// settings window. Defaulted explicitly so a settings.json written by an
+    /// older build still loads.
     #[serde(default = "default_model")]
     pub model: String,
+    /// The last model picked on each provider, so switching back restores it.
+    #[serde(default)]
+    pub provider_models: std::collections::BTreeMap<String, String>,
+    /// Address of the custom OpenAI-compatible endpoint, e.g. LM Studio or Groq.
+    #[serde(default)]
+    pub custom_base_url: String,
     /// Keep the compact island on screen at all times. Off, the island stays fully
     /// hidden until the cursor rests on the top edge of the screen.
     #[serde(default)]
@@ -29,8 +39,12 @@ pub struct Settings {
     pub hover_reveal_delay: f64,
 }
 
+fn default_provider() -> String {
+    crate::llm::DEFAULT_PROVIDER.to_string()
+}
+
 fn default_model() -> String {
-    crate::claude::DEFAULT_MODEL.to_string()
+    crate::llm::DEFAULT_MODEL.to_string()
 }
 
 fn default_hover_reveal_delay() -> f64 {
@@ -48,6 +62,16 @@ impl Settings {
             self.hover_reveal_delay = default_hover_reveal_delay();
         }
         self.hover_reveal_delay = self.hover_reveal_delay.clamp(0.0, MAX_HOVER_REVEAL_DELAY);
+        if crate::llm::provider(&self.provider).is_none() {
+            self.provider = default_provider();
+            self.model = default_model();
+        }
+        self.provider_models.retain(|p, m| crate::llm::provider(p).is_some() && !m.trim().is_empty());
+        self.custom_base_url = if self.custom_base_url.trim().is_empty() {
+            String::new()
+        } else {
+            crate::llm::normalize_base_url(&self.custom_base_url).unwrap_or_default()
+        };
         self
     }
 }
@@ -68,7 +92,10 @@ impl Default for Settings {
             screen: "primary".into(),
             autostart: false,
             hooks_installed: false,
+            provider: default_provider(),
             model: default_model(),
+            provider_models: Default::default(),
+            custom_base_url: String::new(),
             always_visible: false,
             hover_reveal_delay: default_hover_reveal_delay(),
         }
@@ -121,6 +148,30 @@ mod tests {
         assert_eq!(s.hover_reveal_delay, 1.0);
         assert_eq!(s.auto_close_interval, 5.0);
         assert_eq!(s.model, "claude-sonnet-5");
+    }
+
+    #[test]
+    fn chat_provider_settings_are_kept_sane() {
+        let old: Settings = serde_json::from_str(r#"{
+            "soundEnabled": true, "soundVolume": 0.1, "autoCloseInterval": 15.0,
+            "absenceInterval": 180.0, "activeIntegrations": [], "screen": "primary",
+            "autostart": false, "hooksInstalled": false, "model": "claude-sonnet-5"
+        }"#).unwrap();
+        // An older build only knew Claude: its model stays, on Anthropic.
+        assert_eq!(old.provider, "anthropic");
+        assert_eq!(old.model, "claude-sonnet-5");
+
+        let mut s = Settings { provider: "nope".into(), model: "x".into(), ..Settings::default() };
+        s.provider_models.insert("openai".into(), "gpt-5".into());
+        s.provider_models.insert("ghost".into(), "y".into());
+        s.custom_base_url = " http://localhost:1234/v1/ ".into();
+        let s = s.sanitized();
+        assert_eq!(s.provider, "anthropic");
+        assert_eq!(s.model, crate::llm::DEFAULT_MODEL);
+        assert_eq!(s.provider_models.keys().collect::<Vec<_>>(), ["openai"]);
+        assert_eq!(s.custom_base_url, "http://localhost:1234/v1");
+        let bad = Settings { custom_base_url: "file:///etc".into(), ..Settings::default() }.sanitized();
+        assert_eq!(bad.custom_base_url, "");
     }
 
     #[test]

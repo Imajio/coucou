@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
+import type { ModelInfo } from "./models";
 
 export const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -88,6 +89,10 @@ export const Bridge = {
   chatSend: (query: string, context: ChatContext | null) =>
     callOrThrow<{ text: string }>("chat_send", { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** The chat's providers and whether each has a key; never the key itself. */
+  chatProviders: () => call<ProviderInfo[]>("chat_providers"),
+  /** The models a provider offers, asked of the provider. Rejects with the reason. */
+  chatModels: (provider: string) => callOrThrow<ModelInfo[]>("chat_models", { provider }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
   /** Only ever tells you whether a key exists — never its value. */
@@ -122,6 +127,21 @@ export const Bridge = {
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
 };
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  /** Credential store entry for the key, null for a local server. */
+  keyName: string | null;
+  keyRequired: boolean;
+  hasKey: boolean;
+  readsPdf: boolean;
+  webSearch: boolean;
+  /** Where to get a key (or the app, for a local server). */
+  keyUrl: string;
+}
+
+export type { ModelInfo };
 
 export interface MediaSession {
   id: string;

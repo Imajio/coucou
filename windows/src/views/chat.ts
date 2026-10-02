@@ -6,11 +6,15 @@ import { ICONS } from "./icons";
 import { Bridge, type ChatContext } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
-import type { ViewHost } from "./views";
+import { buildModelPicker } from "./modelpicker";
+import type { ViewActions, ViewHost } from "./views";
 
 let nextId = 1;
 
 function bubble(message: ChatMessage): HTMLElement {
+  if (message.role === "note") {
+    return h("div", { class: "chat-row note" }, h("div", { class: "chat-note", text: message.content }));
+  }
   if (message.role === "user") {
     return h(
       "div",
@@ -36,7 +40,24 @@ function contextChip(label: string): HTMLElement {
   return chip;
 }
 
-export function buildPrompt(onHeightChange: () => void): ViewHost {
+export function buildPrompt(actions: ViewActions, onHeightChange: () => void): ViewHost {
+  // Provider and model, switchable at any point: the conversation carries over.
+  const picker = buildModelPicker({
+    get: () => State.settings,
+    save: (patch) => {
+      Object.assign(State.settings, patch);
+      void Bridge.saveSettings(State.settings);
+      State.notify();
+    },
+    onSwitch: (label) => {
+      if (State.chatHistory.length === 0) return;
+      State.chatHistory.push({ id: nextId++, role: "note", content: `Now talking to ${label}` });
+      State.notify();
+      onHeightChange();
+    },
+  });
+  // The hint says what is missing (a key, usually): a click goes to fix it.
+  picker.el.querySelector(".mp-hint")?.addEventListener("click", () => actions.openSettingsWindow());
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   const input = h("input", {
@@ -51,7 +72,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   const el = h(
     "div",
     { class: "view" },
-    h("div", { class: "card wash chat-card" }, h("div", { class: "chat-body" }, chipRow, log, bar)),
+    h("div", { class: "card wash chat-card" }, h("div", { class: "chat-body" }, picker.el, chipRow, log, bar)),
   );
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
@@ -104,6 +125,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   return {
     el,
     sync() {
+      picker.sync();
       const file = State.droppedFile;
       const wantChip = file?.name ?? "";
       if (chipRow.dataset.label !== wantChip) {
@@ -126,6 +148,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
       input.disabled = sending;
     },
     focus() {
+      // Keys may have been added in the settings window meanwhile.
+      void picker.refresh();
       input.focus();
       input.select();
     },

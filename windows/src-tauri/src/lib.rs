@@ -1,10 +1,10 @@
 // Coucou for Windows — app wiring and the commands the island calls.
 
-mod claude;
 mod files;
 mod hooks;
 mod integrations;
 mod island;
+mod llm;
 mod log;
 mod media;
 mod pipe;
@@ -22,7 +22,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
-use claude::{Chat, ChatContext, ChatReply};
+use llm::{ChatContext, ChatReply, Conversation, ModelInfo, ProviderInfo};
 use files::DroppedFile;
 use hooks::{HookPreview, HookStatus};
 use island::{PollGate, ScreenInfo};
@@ -264,21 +264,40 @@ fn approval_decline(app: AppHandle, request_id: String) {
 
 // ── Chat, files and secrets ───────────────────────────────────────────────────
 
-/// One chat turn. The API key and any file bytes stay on the Rust side.
+/// One chat turn with the provider and model chosen in the settings. The API
+/// key and any file bytes stay on the Rust side.
 #[tauri::command]
 async fn chat_send(
     shared: State<'_, Shared>,
-    chat: State<'_, Chat>,
+    chat: State<'_, Conversation>,
     query: String,
     context: Option<ChatContext>,
 ) -> Result<ChatReply, String> {
-    let model = shared.settings.lock().unwrap().model.clone();
-    claude::send(&chat, &model, query, context).await
+    let (provider, model, custom) = {
+        let s = shared.settings.lock().unwrap();
+        (s.provider.clone(), s.model.clone(), s.custom_base_url.clone())
+    };
+    let target = llm::Target::resolve(&provider, &custom)?;
+    llm::send(&chat, &target, &model, query, context).await
 }
 
 #[tauri::command]
-fn chat_reset(chat: State<Chat>) {
+fn chat_reset(chat: State<Conversation>) {
     chat.reset();
+}
+
+/// The chat's providers, and whether each has its key (never the key itself).
+#[tauri::command]
+fn chat_providers() -> Vec<ProviderInfo> {
+    llm::providers()
+}
+
+/// The models a provider offers, asked of the provider.
+#[tauri::command]
+async fn chat_models(shared: State<'_, Shared>, provider: String) -> Result<Vec<ModelInfo>, String> {
+    let custom = shared.settings.lock().unwrap().custom_base_url.clone();
+    let target = llm::Target::resolve(&provider, &custom)?;
+    llm::models(&target).await
 }
 
 /// Copies a dropped file into the inbox and reports its name back.
@@ -405,7 +424,7 @@ pub fn run() {
             prev_foreground: Mutex::new(0),
         })
         .manage(Pending::default())
-        .manage(Chat::default())
+        .manage(Conversation::default())
         .invoke_handler(tauri::generate_handler![
             boot,
             save_settings,
@@ -426,6 +445,8 @@ pub fn run() {
             log_line,
             chat_send,
             chat_reset,
+            chat_providers,
+            chat_models,
             ingest_file,
             secret_present,
             secret_set,
