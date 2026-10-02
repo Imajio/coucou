@@ -31,6 +31,8 @@ const HIT_MARGIN: f64 = 14.0;
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
+    /// The left button is held: the island follows a drag of Mochi with it.
+    pub down: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -194,6 +196,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
         loop {
             gate.wait_until_active();
             let mut last = (f64::MIN, f64::MIN);
+            let mut last_down = false;
             let mut ticks: u32 = 0;
             while gate.is_active() {
                 std::thread::sleep(Duration::from_millis(16));
@@ -231,10 +234,14 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     Ok(s) => (s.width as f64 / scale, s.height as f64 / scale),
                     Err(_) => (PANEL_W, PANEL_H),
                 };
-                if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 {
+                let down = left_button_down();
+                // A press or a release with the cursor still is news too: it
+                // ends a drag of Mochi.
+                if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 && down == last_down {
                     continue;
                 }
                 last = (x, y);
+                last_down = down;
 
                 // Click-through: the window only takes the mouse over the island
                 // shape. A small entry margin means the flag is already off by the
@@ -255,7 +262,6 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // the mouse, which also makes the drop zone as forgiving as the Mac's.
                 // A press may be the start of a drag: make sure the drop target is
                 // ours before the file arrives.
-                let down = left_button_down();
                 if down && !was_down {
                     let handle = app.clone();
                     let _ = app.run_on_main_thread(move || platform::unblock_webview_drops(&handle));
@@ -289,7 +295,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     }
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y });
+                let _ = win.emit("cursor", CursorPayload { x, y, down });
             }
         }
     });

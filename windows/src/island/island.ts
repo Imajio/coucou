@@ -105,6 +105,13 @@ export class Island {
   private lastLoveTime = 0;
   private botHoverStart = { x: 0, y: 0 };
 
+  // Dragging Mochi onto a window (macOS: IslandWindowController's attach drag).
+  /** Where the press on Mochi started, until the button goes up. */
+  private attachStart: { x: number; y: number } | null = null;
+  private attaching = false;
+  private attachLabel!: HTMLElement;
+  private attachProbe = 0;
+
   private confusedRecovery: number | null = null;
   private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
@@ -202,6 +209,7 @@ export class Island {
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
     this.countdown = h("div", { id: "countdown" });
+    this.attachLabel = h("div", { id: "attach-label" });
 
     this.header = buildHeader(actions);
     this.views = buildViews(actions, () => this.animateGeometry(false));
@@ -236,6 +244,7 @@ export class Island {
       this.botCanvas,
       this.miniGrid,
       this.countdown,
+      this.attachLabel,
     );
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -598,7 +607,14 @@ export class Island {
       if (this.isBotHit(e.clientX, e.clientY)) {
         this.cancelBotHover();
         this.engine.slap();
+        // The press may become a drag onto another window.
+        this.attachStart = { x: e.clientX, y: e.clientY };
       }
+    });
+    // A release the page sees (a plain click on Mochi, or a drag ending over
+    // the island) ends it at once; the poll's button state covers the rest.
+    window.addEventListener("mouseup", () => {
+      if (this.attachStart) this.followAttach(State.mouse.x, State.mouse.y, false);
     });
 
     // Esc closes one stage at a time: open, then compact, then hidden. A card
@@ -644,8 +660,9 @@ export class Island {
     });
   }
 
-  /** Cursor in window-logical coordinates. */
-  onCursor(x: number, y: number) {
+  /** Cursor in window-logical coordinates; `down` is the left button, from Rust's poll. */
+  onCursor(x: number, y: number, down?: boolean) {
+    if (this.attachStart) this.followAttach(x, y, down);
     State.mouse = { x, y };
     const rect = this.islandRect();
     State.mouseInIsland = { x: x - rect.x, y: y - rect.y };
@@ -687,6 +704,62 @@ export class Island {
     }
 
     this.ensureRunning();
+  }
+
+  // ── Drag Mochi onto a window ────────────────────────────────────────────────
+
+  /**
+   * Follows a press on Mochi. Past a few pixels it is a drag: Mochi gets
+   * excited and the island names the window under the cursor. Releasing over
+   * a window attaches it to the chat. The poll keeps reporting the cursor
+   * outside the island, so the drag can go anywhere on the screen.
+   */
+  private followAttach(x: number, y: number, down: boolean | undefined) {
+    const start = this.attachStart!;
+    if (down === false) {
+      const dropped = this.attaching;
+      this.endAttach();
+      if (dropped) void this.attachWindow();
+      return;
+    }
+    if (!this.attaching) {
+      if (Math.hypot(x - start.x, y - start.y) <= 4) return;
+      this.attaching = true;
+      this.engine.triggerEmote("love");
+      this.showAttachLabel("Drop me on a window");
+    }
+    // Name the window under the cursor, a few times a second.
+    const now = performance.now();
+    if (now - this.attachProbe < 200) return;
+    this.attachProbe = now;
+    void Bridge.windowAtCursor(false).then((w) => {
+      if (!this.attaching) return;
+      this.showAttachLabel(w ? `${w.appName}${w.title ? `: ${w.title}` : ""}` : "Drop me on a window");
+    });
+  }
+
+  private showAttachLabel(text: string) {
+    this.attachLabel.textContent = text;
+    this.attachLabel.classList.add("on");
+  }
+
+  private endAttach() {
+    this.attachStart = null;
+    this.attaching = false;
+    this.attachLabel.classList.remove("on");
+  }
+
+  /** The window under the cursor becomes the chat's context, in a fresh chat. */
+  private async attachWindow() {
+    const w = await Bridge.windowAtCursor(true);
+    if (!w) return;
+    State.promptContext = { kind: "window", appName: w.appName, title: w.title, url: w.url ?? undefined };
+    State.droppedFile = null;
+    State.chatHistory = [];
+    void Bridge.chatReset();
+    Sound.play("approve");
+    this.engine.triggerEmote("happy");
+    this.setView("prompt");
   }
 
   private isBotHit(x: number, y: number): boolean {

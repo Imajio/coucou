@@ -285,6 +285,11 @@ pub fn window_handle(_win: &WebviewWindow) -> isize {
     0
 }
 
+/// Wayland doesn't let one app look at another's windows.
+pub fn window_at_cursor(_with_url: bool) -> Option<super::WindowInfo> {
+    None
+}
+
 /// Windows on Wayland can't be raised by another app; "Open terminal" falls
 /// back to opening the folder.
 pub fn focus_session_window(_host_pids: &[u32], _project: Option<&str>) -> bool {

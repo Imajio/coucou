@@ -358,6 +358,16 @@ fn open_app(name: String) -> bool {
         .any(|c| platform::no_console(&mut Command::new(&c)).spawn().is_ok())
 }
 
+/// The window under the cursor, for dropping Mochi on it. The URL lookup goes
+/// through UI Automation and can take a moment, so it is only done on drop.
+#[tauri::command]
+async fn window_at_cursor(with_url: bool) -> Option<platform::WindowInfo> {
+    tauri::async_runtime::spawn_blocking(move || platform::window_at_cursor(with_url))
+        .await
+        .ok()
+        .flatten()
+}
+
 /// "Open terminal": brings back the window the session runs in (the terminal
 /// tab's window, or the VS Code window of that folder). False when it can't,
 /// and the island opens the folder instead.
@@ -496,6 +506,7 @@ pub fn run() {
             open_n8n,
             open_app,
             focus_session_window,
+            window_at_cursor,
             open_settings_window,
             set_paused,
             media::media_sessions,

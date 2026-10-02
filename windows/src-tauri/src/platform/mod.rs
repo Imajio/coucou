@@ -69,6 +69,51 @@ pub fn pick_session_window(
     None
 }
 
+/// The window Mochi was dropped on, as the chat gets it for context.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowInfo {
+    pub app_name: String,
+    pub title: String,
+    /// The page's address, for browsers.
+    pub url: Option<String>,
+}
+
+/// Browsers whose address bar is read for the page's URL (executable stems).
+pub const BROWSERS: &[&str] = &["msedge", "chrome", "brave", "opera", "vivaldi", "firefox", "chromium", "arc"];
+
+/// A readable app name from its executable stem.
+pub fn app_display_name(stem: &str) -> String {
+    match stem.to_lowercase().as_str() {
+        "code" => "Visual Studio Code".into(),
+        "explorer" => "File Explorer".into(),
+        "windowsterminal" => "Windows Terminal".into(),
+        "winword" => "Word".into(),
+        "excel" => "Excel".into(),
+        "powerpnt" => "PowerPoint".into(),
+        "outlook" | "olk" => "Outlook".into(),
+        "notepad" => "Notepad".into(),
+        "acrord32" | "acrobat" => "Adobe Acrobat".into(),
+        _ => crate::media::friendly_app_name(stem),
+    }
+}
+
+/// An address bar's text as a link: browsers hide the scheme, and a bar
+/// holding search words (being edited) is no address at all.
+pub fn address_to_url(raw: &str) -> Option<String> {
+    let text = raw.trim();
+    if text.is_empty() || text.contains(char::is_whitespace) {
+        return None;
+    }
+    let lower = text.to_lowercase();
+    if lower.contains("://") || ["about:", "edge:", "chrome:", "file:"].iter().any(|s| lower.starts_with(s)) {
+        return Some(text.to_string());
+    }
+    let host = lower.split(['/', '?', '#']).next().unwrap_or("");
+    let looks_like_host = host == "localhost" || host.starts_with("localhost:") || (host.contains('.') && !host.ends_with('.'));
+    looks_like_host.then(|| format!("https://{text}"))
+}
+
 /// The user's home directory, where `.claude/settings.json` lives.
 pub fn home_dir() -> PathBuf {
     std::env::var_os(HOME_VAR)
@@ -83,6 +128,25 @@ mod tests {
 
     fn w(handle: isize, pid: u32, title: &str) -> TopWindow {
         TopWindow { handle, pid, title: title.into() }
+    }
+
+    #[test]
+    fn address_bars_become_links() {
+        assert_eq!(address_to_url("github.com/Imajio/coucou").as_deref(), Some("https://github.com/Imajio/coucou"));
+        assert_eq!(address_to_url("https://example.org/a?b=1").as_deref(), Some("https://example.org/a?b=1"));
+        assert_eq!(address_to_url("localhost:1420/").as_deref(), Some("https://localhost:1420/"));
+        assert_eq!(address_to_url("edge://settings").as_deref(), Some("edge://settings"));
+        assert_eq!(address_to_url("how to bake bread"), None);
+        assert_eq!(address_to_url("weather"), None);
+        assert_eq!(address_to_url(""), None);
+    }
+
+    #[test]
+    fn apps_get_their_usual_names() {
+        assert_eq!(app_display_name("Code"), "Visual Studio Code");
+        assert_eq!(app_display_name("msedge"), "Microsoft Edge");
+        assert_eq!(app_display_name("WINWORD"), "Word");
+        assert_eq!(app_display_name("figma"), "Figma");
     }
 
     #[test]
