@@ -111,6 +111,14 @@ export const Bridge = {
   /** Album art of the current track as a `data:` URL, or null. */
   mediaArtwork: (id: string) => call<string | null>("media_artwork", { id }),
 
+  // ── Translator ────────────────────────────────────────────────────────────
+  /**
+   * Google Cloud Translation with the user's key. Rejects with "NO_KEY" when no
+   * key is stored. `source` may be "auto".
+   */
+  translate: (text: string, source: string, target: string) =>
+    callOrThrow<Translation>("translate", { text, source, target }),
+
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
 };
@@ -136,7 +144,13 @@ export interface MediaSession {
   current: boolean;
 }
 
-export type MediaAction = "playPause" | "play" | "pause" | "next" | "previous";
+export interface Translation {
+  text: string;
+  /** What Google recognised when the source was "auto". */
+  detectedSource: string | null;
+}
+
+export type MediaAction ="playPause" | "play" | "pause" | "next" | "previous";
 
 export interface IntegrationUpdate {
   id: string;

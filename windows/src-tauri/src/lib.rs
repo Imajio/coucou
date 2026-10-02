@@ -11,6 +11,7 @@ mod pipe;
 mod platform;
 mod secrets;
 mod settings;
+mod translate;
 mod tray;
 
 use std::process::Command;
@@ -437,6 +438,7 @@ pub fn run() {
             media::media_control,
             media::media_set_volume,
             media::media_artwork,
+            translate::translate,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

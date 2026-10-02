@@ -46,6 +46,7 @@ installs for the current user only — no admin prompt.
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
 | Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
 | Music tab (♫) in the open island | What is playing, with previous, play/pause, next and volume |
+| Translate tab (globe) in the open island | Google Translate: pick the languages, type, press `Enter` |
 | Tray icon | Open, Settings…, Pause, Quit |
 
 Everything else happens on its own: a Claude Code permission request opens the
@@ -76,6 +77,20 @@ otherwise; the label next to it says which.
 
 The list is read once a second, only while the tab is open. On Linux it comes
 from MPRIS through `playerctl`, which has to be installed.
+
+### Translate
+
+The globe tab translates with Google Translate. Choose the source language (or
+let Google detect it) and the target, type or paste up to 5,000 characters and
+press `Enter`. The swap button turns the translation around, and Copy puts it
+on the clipboard.
+
+Translating inside the island uses the Google Cloud Translation API with your
+own key: **Settings… → Translator → API key** (create one in a Google Cloud
+project with the Cloud Translation API turned on). The key is kept in the
+Windows Credential Manager, and text is only sent when you ask for a
+translation. Without a key, the tab opens the same text on translate.google.com
+in your browser instead.
 
 ## Claude Code
 

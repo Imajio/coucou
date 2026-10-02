@@ -16,6 +16,7 @@ pub const KNOWN_KEYS: &[&str] = &[
     "resend-api-key",
     "notion-api-key",
     "calcom-api-key",
+    crate::translate::KEY,
 ];
 
 fn entry(key: &str) -> Option<Entry> {
