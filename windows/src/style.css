@@ -1746,3 +1746,71 @@ input[type="range"]::-webkit-slider-thumb {
 .btn:disabled {
   opacity: 0.4;
 }
+
+/* ── Chat model picker ──────────────────────────────────────────────────── */
+
+.mp {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mp-select {
+  font: 500 11px var(--font);
+  color: var(--ink-2);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 2px 7px;
+  outline: none;
+  cursor: default;
+  min-width: 0;
+}
+
+.mp-provider {
+  flex: 0 1 auto;
+  max-width: 140px;
+}
+
+.mp-model {
+  flex: 0 1 auto;
+  max-width: 220px;
+}
+
+.mp-select option {
+  background: #1d1f23;
+  color: var(--ink-2);
+}
+
+.mp-select:disabled {
+  opacity: 0.5;
+}
+
+.mp-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mp-hint.err {
+  color: var(--amber);
+  cursor: pointer;
+}
+
+.chat-row.note {
+  justify-content: center;
+}
+
+.chat-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}

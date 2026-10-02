@@ -30,7 +30,8 @@ export interface ApprovalInfo {
 
 export interface ChatMessage {
   id: number;
-  role: "user" | "assistant";
+  /** "note": a line from the app itself, e.g. that the chat moved to another model. */
+  role: "user" | "assistant" | "note";
   content: string;
 }
 
@@ -90,8 +91,14 @@ export interface Settings {
   screen: "primary" | "cursor";
   autostart: boolean;
   hooksInstalled: boolean;
-  /** Claude model used by the chat. */
+  /** AI provider the chat talks to: anthropic, openai, google, openrouter, ollama, custom. */
+  provider: string;
+  /** Model used by the chat, on `provider`. */
   model: string;
+  /** The last model picked on each provider. */
+  providerModels: Record<string, string>;
+  /** Address of the custom OpenAI-compatible endpoint. */
+  customBaseUrl: string;
   /** Keep the compact island on screen at all times; off, it hides until hovered. */
   alwaysVisible: boolean;
   /** Seconds the cursor must rest on the top edge to bring a hidden island out. */
@@ -109,7 +116,10 @@ export const DEFAULT_SETTINGS: Settings = {
   screen: "primary",
   autostart: false,
   hooksInstalled: false,
-  model: "claude-opus-5",
+  provider: "anthropic",
+  model: "claude-opus-5-5",
+  providerModels: {},
+  customBaseUrl: "",
   alwaysVisible: false,
   hoverRevealDelay: 1,
 };

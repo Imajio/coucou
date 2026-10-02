@@ -270,3 +270,41 @@ select option {
   background: rgba(245, 165, 36, 0.13);
   color: #fbc06a;
 }
+
+/* Chat model picker (shared with the island) and small link buttons. */
+
+.mp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.mp-select {
+  max-width: 220px;
+}
+
+.mp-hint {
+  font: 400 11.5px var(--font);
+  color: var(--dim);
+}
+
+.mp-hint.err {
+  color: #f5a524;
+}
+
+button.link {
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  color: var(--dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+button.link:hover:not(:disabled) {
+  background: transparent;
+  color: var(--ink);
+}

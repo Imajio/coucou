@@ -6,6 +6,7 @@ import "./settings.css";
 import { Bridge, onEvent, type HookStatus } from "../core/bridge";
 import { DEFAULT_SETTINGS, type Settings } from "../core/state";
 import { h, clear } from "../views/dom";
+import { buildModelPicker } from "../views/modelpicker";
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let version = "";
@@ -171,86 +172,112 @@ function claudeSection(status: HookStatus): HTMLElement {
   return section;
 }
 
-// ── Claude API section ────────────────────────────────────────────────────────
+// ── AI providers section ──────────────────────────────────────────────────────
 
-const MODELS: [string, string][] = [
-  ["claude-opus-5", "Claude Opus 5"],
-  ["claude-sonnet-5", "Claude Sonnet 5"],
-  ["claude-haiku-4-5", "Claude Haiku 4.5"],
-];
-
-function apiSection(hasKey: boolean): HTMLElement {
-  const dot = statusDot(hasKey);
-  const state = h("span", { class: "hint", text: hasKey ? "Key saved in the Windows Credential Manager." : "No key yet — the chat needs one." });
-
+/** One key row: password field, Save, Remove, a status dot and where to get one. */
+function keyRow(label: string, keyName: string, present: boolean, keyUrl: string, onChange: () => void): HTMLElement {
+  const dot = statusDot(present);
   const field = h("input", {
     type: "password",
-    placeholder: hasKey ? "••••••••••••  (stored)" : "sk-ant-...",
     style: "flex:1 1 auto;min-width:0",
     autocomplete: "off",
     spellcheck: "false",
   }) as HTMLInputElement;
+  const saveBtn = h("button", { text: "Save" });
+  const removeBtn = h("button", { class: "danger", text: "Remove" });
+  const get = h("button", { class: "link", text: "Get a key", onclick: () => void Bridge.openUrl(keyUrl) });
 
-  const saveBtn = h("button", { class: "primary", text: "Save key" });
-  const clearBtn = h("button", { class: "danger", text: "Remove" });
-  const feedback = h("div", {});
-
-  async function refresh() {
-    const present = (await Bridge.secretPresent("anthropic-api-key")) ?? false;
-    dot.style.background = present ? "#22c55e" : "#f4505e";
-    state.textContent = present
-      ? "Key saved in the Windows Credential Manager."
-      : "No key yet — the chat needs one.";
-    field.placeholder = present ? "••••••••••••  (stored)" : "sk-ant-...";
-    clearBtn.style.display = present ? "" : "none";
+  function show(on: boolean) {
+    dot.style.background = on ? "#22c55e" : "#f4505e";
+    field.placeholder = on ? "••••••••••••  (stored)" : "API key";
+    removeBtn.style.display = on ? "" : "none";
   }
 
   saveBtn.addEventListener("click", async () => {
     const value = field.value.trim();
     if (!value) return;
-    clear(feedback);
     try {
-      await Bridge.secretSet("anthropic-api-key", value);
+      await Bridge.secretSet(keyName, value);
       field.value = "";
-      feedback.append(h("div", { class: "notice ok", text: "Saved. It never touches disk." }));
-      await refresh();
-    } catch (err) {
-      feedback.append(h("div", { class: "notice err", text: `Could not save: ${String(err)}` }));
+      show(true);
+      onChange();
+    } catch {
+      dot.style.background = "#f5a524";
     }
   });
-
-  clearBtn.addEventListener("click", async () => {
-    clear(feedback);
+  removeBtn.addEventListener("click", async () => {
     try {
-      await Bridge.secretClear("anthropic-api-key");
-      feedback.append(h("div", { class: "notice ok", text: "Key removed." }));
-      await refresh();
-    } catch (err) {
-      feedback.append(h("div", { class: "notice err", text: `Could not remove: ${String(err)}` }));
+      await Bridge.secretClear(keyName);
+      show(false);
+      onChange();
+    } catch {
+      dot.style.background = "#f5a524";
     }
   });
 
-  const model = h("select", {}) as HTMLSelectElement;
-  for (const [id, label] of MODELS) model.append(h("option", { value: id, text: label }));
-  if (!MODELS.some(([id]) => id === settings.model)) {
-    model.append(h("option", { value: settings.model, text: settings.model }));
-  }
-  model.value = settings.model;
-  model.addEventListener("change", () => {
-    settings.model = model.value;
-    void save();
-  });
+  show(present);
+  return h("div", { class: "row" },
+    h("label", { text: label }), field, saveBtn, removeBtn, dot, keyUrl ? get : null);
+}
 
-  clearBtn.style.display = hasKey ? "" : "none";
+async function providersSection(): Promise<HTMLElement> {
+  const picker = buildModelPicker({
+    get: () => settings,
+    save: (patch) => {
+      Object.assign(settings, patch);
+      void save();
+    },
+  });
+  const refresh = () => void picker.refresh();
+
+  const providers = (await Bridge.chatProviders()) ?? [];
+  const rows = h("div", { style: "display:flex;flex-direction:column;gap:10px" });
+  for (const p of providers) {
+    if (p.keyName && p.id !== "custom") {
+      rows.append(keyRow(p.name, p.keyName, p.hasKey, p.keyUrl, refresh));
+    } else if (p.id === "ollama") {
+      rows.append(h("div", { class: "row" },
+        h("label", { text: p.name }),
+        h("span", { class: "hint", style: "flex:1 1 auto", text: "On this computer, no key." }),
+        h("button", { class: "link", text: "Get Ollama", onclick: () => void Bridge.openUrl(p.keyUrl) }),
+      ));
+    }
+  }
+
+  // Any other OpenAI-compatible server: LM Studio, Groq, DeepSeek, Mistral…
+  const custom = providers.find((p) => p.id === "custom");
+  if (custom?.keyName) {
+    const url = h("input", {
+      type: "text",
+      value: settings.customBaseUrl,
+      placeholder: "http://localhost:1234/v1",
+      style: "flex:1 1 auto;min-width:0",
+      spellcheck: "false",
+    }) as HTMLInputElement;
+    const urlState = h("i", { class: "dot", style: `background:${settings.customBaseUrl ? "#22c55e" : "#f4505e"}` });
+    const saveUrl = h("button", { text: "Save" });
+    saveUrl.addEventListener("click", () => {
+      settings.customBaseUrl = url.value.trim();
+      urlState.style.background = settings.customBaseUrl ? "#22c55e" : "#f4505e";
+      void save();
+      refresh();
+    });
+    rows.append(
+      h("div", { class: "row" }, h("label", { text: "Custom endpoint" }), url, saveUrl, urlState),
+      keyRow("Custom key (optional)", custom.keyName, custom.hasKey, "", refresh),
+    );
+  }
 
   return h(
     "section",
     {},
-    h("h2", {}, dot, h("span", { text: "Claude" })),
-    state,
-    h("div", { class: "row" }, h("label", { text: "API key" }), field, saveBtn, clearBtn),
-    h("div", { class: "row" }, h("label", { text: "Model" }), model),
-    feedback,
+    h("h2", {}, h("span", { text: "AI providers" })),
+    h("div", {
+      class: "hint",
+      text: "The chat works with any of these, and you can switch model at any point of a conversation. Keys are stored in the Windows Credential Manager and only ever sent to their own provider. Web search is Claude's.",
+    }),
+    h("div", { class: "row" }, h("label", { text: "Chat model" }), picker.el),
+    rows,
   );
 }
 
@@ -534,7 +561,6 @@ async function main() {
     installed: false, settingsPath: "", hookPath: "", hookReady: false,
   };
 
-  const hasKey = (await Bridge.secretPresent("anthropic-api-key")) ?? false;
   const hasTranslateKey = (await Bridge.secretPresent(TRANSLATE_KEY)) ?? false;
 
   const keys = [
@@ -548,7 +574,7 @@ async function main() {
   root.append(
     h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
     claudeSection(status),
-    apiSection(hasKey),
+    await providersSection(),
     translatorSection(hasTranslateKey),
     integrationsSection(present),
     generalSection(),
