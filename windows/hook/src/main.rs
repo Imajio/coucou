@@ -45,7 +45,7 @@ mod unix;
 use unix::connect;
 
 fn main() {
-    let Some((payload, event)) = read_event() else { std::process::exit(0) };
+    let Some((payload, event, agent)) = read_event() else { std::process::exit(0) };
 
     let waits_for_answer = event == "PermissionRequest";
     let budget = if waits_for_answer { DECISION_BUDGET } else { FIRE_AND_FORGET_BUDGET };
@@ -59,12 +59,21 @@ fn main() {
         let _ = tx.send(talk(&payload, waits_for_answer));
     });
 
+    let mut printed = false;
     if let Ok(Some(decision)) = rx.recv_timeout(budget) {
         if let Some(json) = decision_json(&decision) {
             let mut out = std::io::stdout();
             let _ = writeln!(out, "{json}");
             let _ = out.flush();
+            printed = true;
         }
+    }
+    // Gemini CLI and Antigravity read a JSON answer from every hook; an empty
+    // object means "no decision, carry on".
+    if !printed && expects_json_answer(&agent) {
+        let mut out = std::io::stdout();
+        let _ = writeln!(out, "{{}}");
+        let _ = out.flush();
     }
     // Nothing printed: Claude Code asks in the terminal, as if we were not here.
     std::process::exit(0);
@@ -86,8 +95,76 @@ fn decision_json(decision: &str) -> Option<String> {
     ))
 }
 
-/// Reads stdin and returns the payload to forward plus the event name.
-fn read_event() -> Option<(String, String)> {
+fn expects_json_answer(agent: &str) -> bool {
+    matches!(agent, "gemini" | "antigravity")
+}
+
+/// Gemini CLI and Antigravity name their events their own way; the island
+/// knows Claude Code's names. Same table as the macOS relay.
+fn normalize_event(name: &str) -> &str {
+    match name {
+        "BeforeTool" | "BeforeToolSelection" => "PreToolUse",
+        "AfterTool" | "AfterModel" => "PostToolUse",
+        "BeforeAgent" => "UserPromptSubmit",
+        "AfterAgent" => "Stop",
+        "startup" => "SessionStart",
+        "exit" => "SessionEnd",
+        "PreInvocation" => "UserPromptSubmit",
+        "PostInvocation" => "PostToolUse",
+        other => other,
+    }
+}
+
+/// Antigravity describes a tool call as `toolCall: {name, args: {CommandLine,
+/// FilePath, ...}}` and a session as `conversationId`; the island reads Claude
+/// Code's `tool_name`, `tool_input.command` / `file_path` and `session_id`.
+fn normalize_tool_fields(map: &mut serde_json::Map<String, serde_json::Value>) {
+    use serde_json::Value;
+    if !map.contains_key("tool_name") {
+        let call = map.get("toolCall").cloned().unwrap_or(Value::Null);
+        let name = call
+            .get("name")
+            .and_then(Value::as_str)
+            .or_else(|| map.get("tool").and_then(Value::as_str))
+            .unwrap_or("")
+            .to_string();
+        if !name.is_empty() {
+            map.insert("tool_name".into(), Value::String(name));
+        }
+        if !map.contains_key("tool_input") {
+            if let Some(args) = call.get("args").and_then(Value::as_object) {
+                let mut flat = args.clone();
+                for (from, to) in [
+                    ("CommandLine", "command"),
+                    ("FilePath", "file_path"),
+                    ("Path", "path"),
+                    ("Url", "url"),
+                    ("Query", "query"),
+                    ("Pattern", "pattern"),
+                ] {
+                    if let Some(v) = args.get(from) {
+                        flat.insert(to.into(), v.clone());
+                    }
+                }
+                map.insert("tool_input".into(), Value::Object(flat));
+            }
+        }
+    }
+    if !map.contains_key("session_id") {
+        let id = ["conversationId", "conversation_id", "sessionId"]
+            .iter()
+            .find_map(|k| map.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()))
+            .map(str::to_string)
+            .or_else(|| std::env::var("GEMINI_SESSION_ID").ok().filter(|s| !s.is_empty()));
+        if let Some(id) = id {
+            map.insert("session_id".into(), Value::String(id));
+        }
+    }
+}
+
+/// Reads stdin and returns the payload to forward, the event name and the
+/// agent the hook was installed for ("" for Claude Code).
+fn read_event() -> Option<(String, String, String)> {
     let mut raw = Vec::new();
     if std::io::stdin().read_to_end(&mut raw).is_err() || raw.is_empty() {
         return None;
@@ -118,15 +195,17 @@ fn read_event() -> Option<(String, String)> {
     // Which agent this hook was installed for. Absent means Claude Code,
     // so existing hook commands keep working unchanged.
     if !agent.is_empty() {
-        map.insert("coucou_agent".into(), serde_json::Value::String(agent));
+        map.insert("coucou_agent".into(), serde_json::Value::String(agent.clone()));
     }
-    let event = map
+    let raw_event = map
         .get("hook_event_name")
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .filter(|s| !s.is_empty())
         .unwrap_or(arg_event);
+    let event = normalize_event(&raw_event).to_string();
     map.insert("hook_event_name".into(), serde_json::Value::String(event.clone()));
+    normalize_tool_fields(map);
 
     for field in DROPPED_FIELDS {
         map.remove(*field);
@@ -137,7 +216,16 @@ fn read_event() -> Option<(String, String)> {
         .and_then(|v| v.as_str())
         .map(str::is_empty)
         .unwrap_or(true);
-    if cwd_missing {
+    // Antigravity gives its workspace folders instead of a cwd.
+    let workspace = map
+        .get("workspacePaths")
+        .and_then(|v| v.as_array())
+        .and_then(|paths| paths.first())
+        .and_then(|p| p.as_str())
+        .map(str::to_string);
+    if let (true, Some(path)) = (cwd_missing, workspace) {
+        map.insert("cwd".into(), serde_json::Value::String(path));
+    } else if cwd_missing {
         if let Ok(cwd) = std::env::current_dir() {
             map.insert(
                 "cwd".into(),
@@ -165,7 +253,7 @@ fn read_event() -> Option<(String, String)> {
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some((line, event))
+    Some((line, event, agent))
 }
 
 /// Caps every string in the payload. A single Write can carry a whole file.
@@ -252,5 +340,51 @@ mod tests {
         let s = v["tool_input"]["content"].as_str().unwrap();
         assert!(s.len() <= MAX_FIELD_LEN + 4);
         assert!(s.ends_with('…'));
+    }
+}
+
+#[cfg(test)]
+mod normalize_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn other_agents_events_become_the_islands_names() {
+        assert_eq!(normalize_event("BeforeTool"), "PreToolUse");
+        assert_eq!(normalize_event("AfterAgent"), "Stop");
+        assert_eq!(normalize_event("PreInvocation"), "UserPromptSubmit");
+        // Claude Code's own names pass through untouched.
+        for name in ["PreToolUse", "PermissionRequest", "SessionStart", "Stop"] {
+            assert_eq!(normalize_event(name), name);
+        }
+    }
+
+    #[test]
+    fn antigravity_tool_calls_read_like_claude_codes() {
+        let mut v = json!({
+            "toolCall": { "name": "run_command", "args": { "CommandLine": "cargo test", "Cwd": "C:/p" } },
+            "conversationId": "c-42",
+        });
+        normalize_tool_fields(v.as_object_mut().unwrap());
+        assert_eq!(v["tool_name"], "run_command");
+        assert_eq!(v["tool_input"]["command"], "cargo test");
+        assert_eq!(v["tool_input"]["Cwd"], "C:/p");
+        assert_eq!(v["session_id"], "c-42");
+    }
+
+    #[test]
+    fn claude_code_payloads_are_left_as_they_are() {
+        let mut v = json!({ "tool_name": "Bash", "tool_input": { "command": "ls" }, "session_id": "s" });
+        let before = v.clone();
+        normalize_tool_fields(v.as_object_mut().unwrap());
+        assert_eq!(v, before);
+    }
+
+    #[test]
+    fn only_gemini_and_antigravity_want_a_json_answer() {
+        assert!(expects_json_answer("gemini"));
+        assert!(expects_json_answer("antigravity"));
+        assert!(!expects_json_answer(""));
+        assert!(!expects_json_answer("my-agent"));
     }
 }

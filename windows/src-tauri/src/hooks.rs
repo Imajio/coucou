@@ -1,9 +1,10 @@
-// Claude Code hook installation.
+// Agent hook installation: Claude Code, Gemini CLI and Antigravity (agy).
 //
-// The rule from CLAUDE.md is strict and is followed to the letter:
-// read %USERPROFILE%\.claude\settings.json, take a dated backup, merge without
-// touching anybody else's hooks, show the diff, and write only after an explicit
-// click. Uninstall removes Coucou's entries and nothing else.
+// The rule from CLAUDE.md is strict and is followed to the letter for all three:
+// read the agent's own file (%USERPROFILE%\.claude\settings.json,
+// .gemini\settings.json or .gemini\config\hooks.json), take a dated backup,
+// merge without touching anybody else's hooks, show the diff, and write only
+// after an explicit click. Uninstall removes Coucou's entries and nothing else.
 //
 // The command is only the quoted exe path in forward slashes plus the event name:
 // on Windows Claude Code runs hook commands through Git Bash, and anything with
@@ -11,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Manager};
 use crate::{platform, settings};
@@ -33,8 +34,49 @@ pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("SubagentStop", 10),
 ];
 
-/// Marker that identifies a Coucou entry inside settings.json.
+/// Gemini CLI events, the name the island knows them by, and the timeout in
+/// milliseconds (Gemini counts in ms, Claude Code in seconds).
+const GEMINI_EVENTS: &[(&str, &str, u64)] = &[
+    ("SessionStart", "SessionStart", 10_000),
+    ("SessionEnd", "SessionEnd", 10_000),
+    ("BeforeTool", "PreToolUse", 5_000),
+    ("AfterTool", "PostToolUse", 5_000),
+    ("BeforeAgent", "UserPromptSubmit", 5_000),
+    ("AfterAgent", "Stop", 5_000),
+];
+
+/// Antigravity's tool events take a matcher group; its lifecycle events a bare handler.
+const AGY_TOOL_EVENTS: &[&str] = &["PreToolUse", "PostToolUse"];
+const AGY_LIFECYCLE_EVENTS: &[&str] = &["PreInvocation", "PostInvocation", "Stop"];
+/// Antigravity keeps hooks in named sets; Coucou's set is this key.
+const AGY_SET: &str = "coucou";
+
+/// Marker that identifies a Coucou entry. `nb-hook` is the macOS relay: a
+/// settings file shared through a dotfiles repo may carry its entries too.
 const MARKER: &str = "coucou-hook";
+const MAC_MARKER: &str = "nb-hook";
+
+/// The agents Coucou can hook into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Agent {
+    #[default]
+    Claude,
+    Gemini,
+    Antigravity,
+}
+
+impl Agent {
+    /// The file the agent reads its hooks from.
+    pub fn path(self) -> PathBuf {
+        let home = platform::home_dir();
+        match self {
+            Agent::Claude => home.join(".claude").join("settings.json"),
+            Agent::Gemini => home.join(".gemini").join("settings.json"),
+            Agent::Antigravity => home.join(".gemini").join("config").join("hooks.json"),
+        }
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,18 +98,14 @@ pub struct HookPreview {
     pub fingerprint: String,
 }
 
-pub fn settings_path() -> PathBuf {
-    platform::home_dir().join(".claude").join("settings.json")
-}
-
-/// Reads `~/.claude/settings.json`.
+/// Reads the agent's hook file.
 ///
 /// The only error that means "start from nothing" is the file not being there.
 /// Everything else — a lock held by another process, a permission problem, JSON
 /// we cannot parse — is reported, because the alternative is treating somebody's
 /// unreadable settings as an empty object and then writing that back over them.
-fn read_settings() -> Result<Value, String> {
-    let path = settings_path();
+fn read_settings(agent: Agent) -> Result<Value, String> {
+    let path = agent.path();
     match std::fs::read(&path) {
         Ok(bytes) => parse_settings(&bytes, &path.display().to_string()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(json!({})),
@@ -99,22 +137,24 @@ fn parse_settings(bytes: &[u8], path: &str) -> Result<Value, String> {
 /// The settings as they are, or an empty object when we cannot tell. Only for
 /// read-only paths like `status()`, which must never fail loudly; anything that
 /// writes uses `read_settings()` and surfaces the error instead.
-fn read_settings_lossy() -> Value {
-    read_settings().unwrap_or_else(|_| json!({}))
+fn read_settings_lossy(agent: Agent) -> Value {
+    read_settings(agent).unwrap_or_else(|_| json!({}))
 }
 
+/// The relay, quoted, followed by `args`: the event, preceded by
+/// `--agent <name>` for agents other than Claude Code.
 #[cfg(windows)]
-fn hook_command(event: &str) -> String {
+fn hook_command(args: &str) -> String {
     let exe = settings::hook_exe_path().to_string_lossy().replace('\\', "/");
-    format!("\"{exe}\" {event}")
+    format!("\"{exe}\" {args}")
 }
 
 /// Claude Code runs the command through `sh`, which still reads `$`, `` ` ``
 /// and `\` inside double quotes. Single quotes keep the path a path, whatever
 /// the home directory is called.
 #[cfg(unix)]
-fn hook_command(event: &str) -> String {
-    format!("{} {event}", sh_quote(&settings::hook_exe_path().to_string_lossy()))
+fn hook_command(args: &str) -> String {
+    format!("{} {args}", sh_quote(&settings::hook_exe_path().to_string_lossy()))
 }
 
 /// `s` as one single-quoted shell word: `'` becomes `'\''`, nothing else is
@@ -124,23 +164,62 @@ fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
+fn command_is_ours(hook: &Value) -> bool {
+    hook.get("command")
+        .and_then(Value::as_str)
+        .map(|c| c.contains(MARKER) || c.contains(MAC_MARKER))
+        .unwrap_or(false)
+}
+
 fn entry_is_ours(entry: &Value) -> bool {
     entry
         .get("hooks")
         .and_then(Value::as_array)
-        .map(|hooks| {
-            hooks.iter().any(|h| {
-                h.get("command")
-                    .and_then(Value::as_str)
-                    .map(|c| c.contains(MARKER))
-                    .unwrap_or(false)
-            })
-        })
+        .map(|hooks| hooks.iter().any(command_is_ours))
         .unwrap_or(false)
 }
 
-/// Settings with Coucou's hooks added; everything else is left untouched.
-fn merged(existing: &Value) -> Value {
+/// The file with Coucou's hooks added; everything else is left untouched.
+fn merged(agent: Agent, existing: &Value) -> Result<Value, String> {
+    match agent {
+        Agent::Claude => Ok(merged_claude(existing)),
+        Agent::Gemini => merged_gemini(existing),
+        Agent::Antigravity => Ok(merged_agy(existing)),
+    }
+}
+
+/// The file with every Coucou entry removed, and nothing else changed.
+fn without_ours(agent: Agent, existing: &Value) -> Result<Value, String> {
+    match agent {
+        Agent::Claude => Ok(without_ours_claude(existing)),
+        Agent::Gemini => without_ours_gemini(existing),
+        Agent::Antigravity => Ok(without_ours_agy(existing)),
+    }
+}
+
+fn is_installed(agent: Agent, current: &Value) -> bool {
+    match agent {
+        Agent::Claude | Agent::Gemini => current
+            .get("hooks")
+            .and_then(Value::as_object)
+            .map(|hooks| {
+                hooks
+                    .values()
+                    .filter_map(Value::as_array)
+                    .flatten()
+                    // Gemini also had flat entries: a command right in the group.
+                    .any(|group| entry_is_ours(group) || command_is_ours(group))
+            })
+            .unwrap_or(false),
+        Agent::Antigravity => current
+            .get(AGY_SET)
+            .map(|set| set.to_string().contains(MARKER))
+            .unwrap_or(false),
+    }
+}
+
+/// Claude Code: settings.json, one group per event.
+fn merged_claude(existing: &Value) -> Value {
     let mut root = existing.as_object().cloned().unwrap_or_default();
     let mut hooks = root
         .get("hooks")
@@ -169,8 +248,8 @@ fn merged(existing: &Value) -> Value {
     Value::Object(root)
 }
 
-/// Settings with every Coucou entry removed, and nothing else changed.
-fn without_ours(existing: &Value) -> Value {
+/// Claude Code: settings.json with every Coucou entry removed.
+fn without_ours_claude(existing: &Value) -> Value {
     let mut root = existing.as_object().cloned().unwrap_or_default();
     let Some(hooks) = root.get("hooks").and_then(Value::as_object).cloned() else {
         return Value::Object(root);
@@ -198,6 +277,119 @@ fn without_ours(existing: &Value) -> Value {
     Value::Object(root)
 }
 
+/// Gemini CLI: `hooks` in ~/.gemini/settings.json, one matcher group per event.
+/// Unexpected shapes are refused rather than overwritten.
+fn merged_gemini(existing: &Value) -> Result<Value, String> {
+    let mut root = existing.as_object().cloned().unwrap_or_default();
+    let mut hooks = match root.get("hooks") {
+        None => Map::new(),
+        Some(Value::Object(h)) => h.clone(),
+        Some(_) => return Err(unexpected("hooks")),
+    };
+    for (event, island_event, timeout) in GEMINI_EVENTS {
+        let groups = match hooks.get(*event) {
+            None => Vec::new(),
+            Some(Value::Array(g)) => g.clone(),
+            Some(_) => return Err(unexpected(&format!("hooks.{event}"))),
+        };
+        let mut groups = without_ours_in(groups);
+        groups.push(json!({
+            "matcher": "*",
+            "hooks": [{
+                "type": "command",
+                "command": hook_command(&format!("--agent gemini {island_event}")),
+                "timeout": timeout,
+            }]
+        }));
+        hooks.insert((*event).to_string(), Value::Array(groups));
+    }
+    root.insert("hooks".into(), Value::Object(hooks));
+    Ok(Value::Object(root))
+}
+
+fn without_ours_gemini(existing: &Value) -> Result<Value, String> {
+    let mut root = existing.as_object().cloned().unwrap_or_default();
+    let hooks = match root.get("hooks") {
+        None => return Ok(Value::Object(root)),
+        Some(Value::Object(h)) => h.clone(),
+        Some(_) => return Err(unexpected("hooks")),
+    };
+    let mut out = Map::new();
+    for (event, value) in hooks {
+        match value {
+            Value::Array(groups) => {
+                let kept = without_ours_in(groups);
+                if !kept.is_empty() {
+                    out.insert(event, Value::Array(kept));
+                }
+            }
+            other => {
+                out.insert(event, other);
+            }
+        }
+    }
+    if out.is_empty() {
+        root.remove("hooks");
+    } else {
+        root.insert("hooks".into(), Value::Object(out));
+    }
+    Ok(Value::Object(root))
+}
+
+/// Drops Coucou's hooks from Gemini-style groups. Anybody else's hooks sharing
+/// a group stay; a group left empty goes.
+fn without_ours_in(groups: Vec<Value>) -> Vec<Value> {
+    groups
+        .into_iter()
+        .filter_map(|group| {
+            if command_is_ours(&group) {
+                return None; // a flat entry
+            }
+            let Some(inner) = group.get("hooks").and_then(Value::as_array) else {
+                return Some(group);
+            };
+            let kept: Vec<Value> = inner.iter().filter(|h| !command_is_ours(h)).cloned().collect();
+            if kept.is_empty() {
+                return None;
+            }
+            let mut group = group;
+            group["hooks"] = Value::Array(kept);
+            Some(group)
+        })
+        .collect()
+}
+
+fn unexpected(field: &str) -> String {
+    format!("\"{field}\" has an unexpected type in the file. Coucou has not touched it.")
+}
+
+/// Antigravity: Coucou's own named set in ~/.gemini/config/hooks.json.
+fn merged_agy(existing: &Value) -> Value {
+    let mut root = existing.as_object().cloned().unwrap_or_default();
+    let handler = |event: &str| {
+        json!({
+            "type": "command",
+            "command": hook_command(&format!("--agent antigravity {event}")),
+            "timeout": 10,
+        })
+    };
+    let mut set = Map::new();
+    for event in AGY_TOOL_EVENTS {
+        set.insert((*event).into(), json!([{ "matcher": "*", "hooks": [handler(event)] }]));
+    }
+    for event in AGY_LIFECYCLE_EVENTS {
+        set.insert((*event).into(), json!([handler(event)]));
+    }
+    root.insert(AGY_SET.into(), Value::Object(set));
+    Value::Object(root)
+}
+
+fn without_ours_agy(existing: &Value) -> Value {
+    let mut root = existing.as_object().cloned().unwrap_or_default();
+    root.remove(AGY_SET);
+    Value::Object(root)
+}
+
 fn pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
@@ -212,9 +404,10 @@ fn stamp() -> String {
     )
 }
 
-fn backup_path() -> PathBuf {
-    let p = settings_path();
-    p.with_file_name(format!("settings.json.bak-{}", stamp()))
+fn backup_path(agent: Agent) -> PathBuf {
+    let p = agent.path();
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    p.with_file_name(format!("{name}.bak-{}", stamp()))
 }
 
 /// Identifies the exact bytes a preview was computed from. FNV-1a is plenty:
@@ -228,8 +421,8 @@ fn fingerprint(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
-fn current_fingerprint() -> String {
-    match std::fs::read(settings_path()) {
+fn current_fingerprint(agent: Agent) -> String {
+    match std::fs::read(agent.path()) {
         Ok(bytes) => fingerprint(&bytes),
         Err(_) => fingerprint(b""),
     }
@@ -237,36 +430,25 @@ fn current_fingerprint() -> String {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-pub fn status() -> HookStatus {
-    let current = read_settings_lossy();
-    let installed = current
-        .get("hooks")
-        .and_then(Value::as_object)
-        .map(|hooks| {
-            hooks
-                .values()
-                .filter_map(Value::as_array)
-                .flatten()
-                .any(entry_is_ours)
-        })
-        .unwrap_or(false);
+pub fn status(agent: Agent) -> HookStatus {
+    let installed = is_installed(agent, &read_settings_lossy(agent));
     let hook_path = settings::hook_exe_path();
     HookStatus {
         installed,
-        settings_path: settings_path().to_string_lossy().to_string(),
+        settings_path: agent.path().to_string_lossy().to_string(),
         hook_ready: hook_path.exists(),
         hook_path: hook_path.to_string_lossy().to_string(),
     }
 }
 
-pub fn preview(install: bool) -> Result<HookPreview, String> {
-    let current = read_settings()?;
-    let next = if install { merged(&current) } else { without_ours(&current) };
+pub fn preview(agent: Agent, install: bool) -> Result<HookPreview, String> {
+    let current = read_settings(agent)?;
+    let next = if install { merged(agent, &current)? } else { without_ours(agent, &current)? };
     Ok(HookPreview {
         diff: unified_diff(&pretty(&current), &pretty(&next)),
-        backup: backup_path().to_string_lossy().to_string(),
-        settings_path: settings_path().to_string_lossy().to_string(),
-        fingerprint: current_fingerprint(),
+        backup: backup_path(agent).to_string_lossy().to_string(),
+        settings_path: agent.path().to_string_lossy().to_string(),
+        fingerprint: current_fingerprint(agent),
     })
 }
 
@@ -276,27 +458,27 @@ pub fn preview(install: bool) -> Result<HookPreview, String> {
 /// in between — another tool, another window, the user's own editor — we stop
 /// and make them look at a fresh diff, because the only thing worse than not
 /// installing the hooks is silently reverting somebody else's edit.
-pub fn write(install: bool, fingerprint: &str) -> Result<String, String> {
-    let path = settings_path();
+pub fn write(agent: Agent, install: bool, fingerprint: &str) -> Result<String, String> {
+    let path = agent.path();
     let dir = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
 
     // Read before the backup: an unreadable file must abort before we touch
     // anything at all.
-    let current = read_settings()?;
-    if current_fingerprint() != fingerprint {
+    let current = read_settings(agent)?;
+    if current_fingerprint(agent) != fingerprint {
         return Err(format!(
             "{} changed since the preview. Nothing was written — review the new diff.",
             path.display()
         ));
     }
 
-    let backup = backup_path();
+    let backup = backup_path(agent);
     if path.exists() {
         std::fs::copy(&path, &backup).map_err(|e| format!("backup failed: {e}"))?;
     }
 
-    let next = if install { merged(&current) } else { without_ours(&current) };
+    let next = if install { merged(agent, &current)? } else { without_ours(agent, &current)? };
     let mut text = pretty(&next);
     text.push('\n');
 
@@ -556,7 +738,7 @@ mod tests {
             }
         });
 
-        let after = merged(&existing);
+        let after = merged(Agent::Claude, &existing).unwrap();
         assert_eq!(after["model"], "claude-opus-5");
         assert_eq!(after["theme"], "dark");
         assert_eq!(after["enabledPlugins"], serde_json::json!(["a", "b"]));
@@ -570,8 +752,76 @@ mod tests {
         assert!(after["hooks"]["SomeEventWeDoNotTouch"].is_array());
 
         // And removing ours puts it back exactly as it was.
-        let cleaned = without_ours(&after);
+        let cleaned = without_ours(Agent::Claude, &after).unwrap();
         assert_eq!(cleaned, existing);
+    }
+
+    #[test]
+    fn gemini_hooks_join_each_event_and_leave_the_rest_alone() {
+        let existing = json!({
+            "theme": "Dracula",
+            "hooks": {
+                "BeforeTool": [
+                    { "matcher": "write_file", "hooks": [{ "type": "command", "command": "lint.sh" }] },
+                    // A Coucou hook sharing a group with somebody else's.
+                    { "matcher": "*", "hooks": [
+                        { "type": "command", "command": "\"C:/x/coucou-hook.exe\" --agent gemini PreToolUse" },
+                        { "type": "command", "command": "audit.sh" },
+                    ] },
+                    // The macOS relay's flat legacy entry.
+                    { "command": "/bin/sh nb-hook --agent gemini PreToolUse" },
+                ],
+            },
+        });
+        let after = merged(Agent::Gemini, &existing).unwrap();
+        assert_eq!(after["theme"], "Dracula");
+        let before_tool = after["hooks"]["BeforeTool"].as_array().unwrap();
+        assert_eq!(before_tool.len(), 3, "foreign group, foreign hook kept, ours re-added once");
+        assert_eq!(before_tool[1]["hooks"].as_array().unwrap().len(), 1);
+        assert_eq!(before_tool[1]["hooks"][0]["command"], "audit.sh");
+        let ours = &before_tool[2]["hooks"][0];
+        assert!(ours["command"].as_str().unwrap().ends_with("--agent gemini PreToolUse"));
+        assert_eq!(ours["timeout"], 5_000);
+        for (event, island_event, _) in GEMINI_EVENTS {
+            let cmd = after["hooks"][event].as_array().unwrap().last().unwrap()["hooks"][0]["command"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            assert!(cmd.ends_with(&format!("--agent gemini {island_event}")), "{event}: {cmd}");
+        }
+        assert!(is_installed(Agent::Gemini, &after));
+
+        let cleaned = without_ours(Agent::Gemini, &after).unwrap();
+        assert!(!is_installed(Agent::Gemini, &cleaned));
+        assert_eq!(cleaned["theme"], "Dracula");
+        assert_eq!(cleaned["hooks"]["BeforeTool"].as_array().unwrap().len(), 2);
+        assert!(cleaned["hooks"].get("AfterAgent").is_none(), "an event left empty goes");
+
+        let odd = json!({ "hooks": ["not", "an", "object"] });
+        assert!(merged(Agent::Gemini, &odd).is_err(), "an odd shape is refused, never overwritten");
+        assert!(without_ours(Agent::Gemini, &odd).is_err());
+    }
+
+    #[test]
+    fn antigravity_hooks_live_in_their_own_set() {
+        let existing = json!({ "mine": { "Stop": [{ "type": "command", "command": "say done" }] } });
+        let after = merged(Agent::Antigravity, &existing).unwrap();
+        assert_eq!(after["mine"], existing["mine"]);
+        let set = &after[AGY_SET];
+        assert!(set["PreToolUse"][0]["hooks"][0]["command"].as_str().unwrap().ends_with("--agent antigravity PreToolUse"));
+        assert_eq!(set["PreToolUse"][0]["matcher"], "*");
+        assert!(set["Stop"][0]["command"].as_str().unwrap().ends_with("--agent antigravity Stop"));
+        assert!(is_installed(Agent::Antigravity, &after));
+        let cleaned = without_ours(Agent::Antigravity, &after).unwrap();
+        assert_eq!(cleaned, existing);
+        assert!(!is_installed(Agent::Antigravity, &cleaned));
+    }
+
+    #[test]
+    fn each_agent_has_its_own_file() {
+        assert!(Agent::Claude.path().ends_with(".claude/settings.json"));
+        assert!(Agent::Gemini.path().ends_with(".gemini/settings.json"));
+        assert!(Agent::Antigravity.path().ends_with(".gemini/config/hooks.json"));
     }
 
     #[test]
@@ -630,7 +880,7 @@ mod tests {
         std::fs::create_dir_all(tmp.join(".claude")).unwrap();
         std::env::set_var(platform::HOME_VAR, &tmp);
 
-        let path = settings_path();
+        let path = Agent::Claude.path();
         assert!(path.starts_with(&tmp), "the test must not touch the real home");
 
         // A real-shaped file, written the way PowerShell 5 would: UTF-8 with BOM.
@@ -640,9 +890,9 @@ mod tests {
         std::fs::write(&path, &bytes).unwrap();
 
         // Install.
-        let plan = preview(true).expect("a BOM must not stop the preview");
+        let plan = preview(Agent::Claude, true).expect("a BOM must not stop the preview");
         assert!(plan.diff.contains("coucou-hook"), "the diff must show what changes");
-        let backup = write(true, &plan.fingerprint).expect("install should succeed");
+        let backup = write(Agent::Claude, true, &plan.fingerprint).expect("install should succeed");
 
         // The backup holds the original bytes, BOM and all.
         assert_eq!(std::fs::read(&backup).unwrap(), bytes);
@@ -654,20 +904,20 @@ mod tests {
         assert_eq!(after["tui"]["x"], 1);
         let pre = after["hooks"]["PreToolUse"].as_array().unwrap();
         assert!(pre.iter().any(|e| serde_json::to_string(e).unwrap().contains("other-tool.exe")));
-        assert!(status().installed);
+        assert!(status(Agent::Claude).installed);
 
         // A file that moved since the preview is refused, and left alone.
-        let stale = preview(false).unwrap();
+        let stale = preview(Agent::Claude, false).unwrap();
         std::fs::write(&path, br#"{"model":"someone-else-edited-this"}"#).unwrap();
-        let err = write(false, &stale.fingerprint).unwrap_err();
+        let err = write(Agent::Claude, false, &stale.fingerprint).unwrap_err();
         assert!(err.contains("changed since the preview"), "got: {err}");
         let untouched: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(untouched["model"], "someone-else-edited-this");
 
         // Content we cannot parse is refused before anything is written.
         std::fs::write(&path, b"{ broken").unwrap();
-        assert!(preview(true).is_err());
-        assert!(write(true, "whatever").is_err());
+        assert!(preview(Agent::Claude, true).is_err());
+        assert!(write(Agent::Claude, true, "whatever").is_err());
         assert_eq!(std::fs::read(&path).unwrap(), b"{ broken");
 
         let _ = std::fs::remove_dir_all(&tmp);

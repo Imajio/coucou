@@ -78,6 +78,7 @@ export class Ticker {
   private queue: string[] = [];
   private startMs: number | null = null;
   private displayIndex = -1;
+  private taskId: string | null = null;
 
   constructor() {
     this.el = h("div", { class: "ticker" }, this.a.el, this.b.el, this.c.el);
@@ -98,6 +99,16 @@ export class Ticker {
   sync(task: AgentTask | null) {
     const steps = task && task.steps.length > 0 ? task.steps : ["…"];
     const idx = task ? Math.min(task.stepIndex, steps.length - 1) : -1;
+
+    // Another session took the card (Claude Code, Gemini CLI…): show its own
+    // steps straight away instead of scrolling the previous session's.
+    const taskId = task?.id ?? null;
+    if (taskId !== this.taskId) {
+      this.taskId = taskId;
+      this.displayIndex = -1;
+      this.queue = [];
+      this.startMs = null;
+    }
 
     // First render: drop straight into place, no animation.
     if (this.displayIndex < 0) {

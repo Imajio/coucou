@@ -24,7 +24,7 @@ use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
 use llm::{ChatContext, ChatReply, Conversation, ModelInfo, ProviderInfo};
 use files::DroppedFile;
-use hooks::{HookPreview, HookStatus};
+use hooks::{Agent as HookAgent, HookPreview, HookStatus};
 use island::{PollGate, ScreenInfo};
 use pipe::Pending;
 use settings::Settings;
@@ -53,7 +53,7 @@ pub struct BootInfo {
 fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
     let mut settings = shared.settings.lock().unwrap().clone();
     // The real state of ~/.claude/settings.json wins over whatever we stored.
-    settings.hooks_installed = hooks::status().installed;
+    settings.hooks_installed = hooks::status(HookAgent::Claude).installed;
     let screen = island::screen_info(&app, &settings.screen);
     BootInfo {
         settings,
@@ -208,17 +208,18 @@ fn set_paused(paused: bool) {
     integrations::set_paused(paused);
 }
 
-// ── Claude Code hooks ─────────────────────────────────────────────────────────
+// ── Agent hooks (Claude Code, Gemini CLI, Antigravity) ────────────────────────
+// `agent` is optional and defaults to Claude Code.
 
 #[tauri::command]
-fn hooks_status() -> HookStatus {
-    hooks::status()
+fn hooks_status(agent: Option<HookAgent>) -> HookStatus {
+    hooks::status(agent.unwrap_or_default())
 }
 
 /// Returns the diff the user has to look at before anything is written.
 #[tauri::command]
-fn hooks_preview(install: bool) -> Result<HookPreview, String> {
-    hooks::preview(install)
+fn hooks_preview(install: bool, agent: Option<HookAgent>) -> Result<HookPreview, String> {
+    hooks::preview(agent.unwrap_or_default(), install)
 }
 
 /// Only ever called from an explicit click in the settings window.
@@ -228,10 +229,15 @@ fn hooks_apply(
     shared: State<Shared>,
     install: bool,
     fingerprint: String,
+    agent: Option<HookAgent>,
 ) -> Result<String, String> {
+    let agent = agent.unwrap_or_default();
     // The fingerprint comes from the preview the user actually looked at, so a
-    // settings.json that changed in between is refused rather than overwritten.
-    let backup = hooks::write(install, &fingerprint)?;
+    // file that changed in between is refused rather than overwritten.
+    let backup = hooks::write(agent, install, &fingerprint)?;
+    if agent != HookAgent::Claude {
+        return Ok(backup);
+    }
     let updated = {
         let mut current = shared.settings.lock().unwrap();
         current.hooks_installed = install;
