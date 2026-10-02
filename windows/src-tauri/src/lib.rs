@@ -6,6 +6,7 @@ mod hooks;
 mod integrations;
 mod island;
 mod log;
+mod media;
 mod pipe;
 mod platform;
 mod secrets;
@@ -432,6 +433,10 @@ pub fn run() {
             open_n8n,
             open_settings_window,
             set_paused,
+            media::media_sessions,
+            media::media_control,
+            media::media_set_volume,
+            media::media_artwork,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

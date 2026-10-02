@@ -15,6 +15,15 @@ mod linux;
 #[cfg(target_os = "linux")]
 pub use self::linux::*;
 
+/// What is playing, for the Music tab (see crate::media). Same functions on
+/// every OS: `sessions`, `control`, `set_volume`, `artwork`.
+#[cfg(windows)]
+#[path = "windows_media.rs"]
+pub mod media;
+#[cfg(target_os = "linux")]
+#[path = "linux_media.rs"]
+pub mod media;
+
 /// Wall-clock time in the user's time zone, for log lines and backup names.
 pub struct LocalTime {
     pub year: u32,

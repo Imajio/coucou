@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: a Music tab in the island shows what is playing in browsers, Spotify and other players, with previous, play/pause, next and a volume slider for the chosen source
 - Windows: clicking the island gives it the keyboard, so `Esc` works there: an open island folds to compact, a compact one hides, and the keyboard goes back to the app you were in
 - Windows and Linux: Settings → General has an **Always show island** switch. Off, the island stays fully hidden until the pointer rests on the top edge for the configurable **Hover delay**; on, it stays on screen
 - Windows: hovering the top edge brings a hidden island back again; the wake strip could be left click-through after the island folded away, and then nothing woke it
