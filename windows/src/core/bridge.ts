@@ -105,6 +105,8 @@ export const Bridge = {
   refreshIntegration: (id: string) => call<void>("refresh_integration", { id }),
   /** Opens the configured n8n instance in the browser. */
   openN8n: () => call<void>("open_n8n"),
+  /** Starts a known desktop app (only "cursor" for now); false when it isn't installed. */
+  openApp: (name: string) => call<boolean>("open_app", { name }).then((ok) => ok ?? false),
 
   // ── Music ─────────────────────────────────────────────────────────────────
   /** What is playing on the machine, the OS's current session first. */

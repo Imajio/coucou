@@ -336,6 +336,28 @@ fn open_n8n() {
     }
 }
 
+/// "Open Cursor" on the Cursor pill. Only known apps, from their usual install
+/// place or the PATH; false when none is found, and the card offers the
+/// download page instead.
+#[tauri::command]
+fn open_app(name: String) -> bool {
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    match name.as_str() {
+        "cursor" => {
+            #[cfg(windows)]
+            if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+                candidates.push(std::path::PathBuf::from(local).join("Programs").join("cursor").join("Cursor.exe"));
+            }
+            candidates.extend(platform::find_on_path("cursor"));
+        }
+        _ => return false,
+    }
+    candidates
+        .into_iter()
+        .filter(|c| c.is_file())
+        .any(|c| platform::no_console(&mut Command::new(&c)).spawn().is_ok())
+}
+
 /// Refresh buttons in the integration cards.
 #[tauri::command]
 async fn refresh_integration(app: AppHandle, id: String) {
@@ -459,6 +481,7 @@ pub fn run() {
             secret_clear,
             refresh_integration,
             open_n8n,
+            open_app,
             open_settings_window,
             set_paused,
             media::media_sessions,

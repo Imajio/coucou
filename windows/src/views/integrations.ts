@@ -6,6 +6,7 @@
 
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
+import { pillDefinition } from "../core/catalog";
 import { State, type AgentTask } from "../core/state";
 import { Bridge } from "../core/bridge";
 
@@ -53,18 +54,51 @@ const OPEN_URLS: Record<string, string> = {
   integration_calcom: "https://app.cal.com/bookings",
 };
 
-function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
+function idleCard(task: AgentTask, hooks: IntegrationCardHooks): HTMLElement {
+  const openSettings = hooks.openSettings;
+  const def = pillDefinition(task.id);
   const info = State.integrations[task.id];
   const configured = info?.configured ?? false;
   const error = info?.error ?? null;
-  // The Claude Code pill is about hooks, not a key — the macOS wording would be
-  // misleading here.
-  const missing = task.id === "integration_claude" ? "Hooks not installed" : "Key not configured";
-  const label = error ?? (configured ? "Connected · loading…" : missing);
-  const statusColor = error || !configured ? "#F4505E" : "#22C55E";
+  const isHooks = task.id === "integration_claude" || !!def?.hookAgent;
+  const provider = def?.provider;
+  // Hook pills are about hooks, AI pills about their key, the rest about a service.
+  let label: string;
+  if (def?.comingSoon) label = "Coming soon";
+  else if (error) label = error;
+  else if (isHooks) label = configured ? "Hooks installed" : "Hooks not installed";
+  else if (provider) {
+    const s = State.settings;
+    const model = s.providerModels[provider] ?? (s.provider === provider ? s.model : "");
+    const what = provider === "ollama" ? "Runs locally" : "Key configured";
+    label = configured ? (model ? `${what} · ${model}` : what) : "Key not configured";
+  } else label = configured ? "Connected · loading…" : "Key not configured";
+  const statusColor = def?.comingSoon ? "#6B7079" : error || !configured ? "#F4505E" : "#22C55E";
 
   const actions = h("div", { class: "int-actions" });
-  if (task.id === "integration_claude") {
+  if (provider) {
+    if (configured) {
+      actions.append(
+        h("button", {
+          class: "link-btn",
+          style: `color:${task.color}d9`,
+          text: `Chat with ${task.name}`,
+          onclick: () => hooks.chatWith(provider),
+        }),
+      );
+    }
+  } else if (task.id === "agent_cursor") {
+    actions.append(
+      h("button", {
+        class: "link-btn",
+        style: `color:${task.color}d9`,
+        text: "Open Cursor",
+        onclick: async () => {
+          if (!(await Bridge.openApp("cursor"))) void Bridge.openUrl("https://cursor.com/download");
+        },
+      }),
+    );
+  } else if (task.id === "integration_claude") {
     actions.append(
       h("button", {
         class: "link-btn",
@@ -92,7 +126,7 @@ function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
       }),
     );
   }
-  if (configured) {
+  if (configured && def?.category === "service") {
     actions.append(
       h("button", {
         class: "link-btn",
@@ -101,7 +135,7 @@ function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
         onclick: () => void Bridge.refreshIntegration(task.id),
       }),
     );
-  } else {
+  } else if (!configured && !def?.comingSoon) {
     actions.append(
       h("button", { class: "link-btn", style: "color:#8e939c", text: "Settings…", onclick: openSettings }),
     );
@@ -110,7 +144,7 @@ function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
   return h(
     "div",
     { class: "int-card" },
-    header(task.color, task.id === "integration_claude" ? "VS Code" : task.name, "Integration"),
+    header(task.color, def?.name ?? task.name, def?.subtitle ?? "Integration"),
     h("div", { class: "int-status" }, dot(statusColor, 5), h("span", { text: label })),
     actions,
   );
@@ -317,9 +351,9 @@ function calcomCard(): HTMLElement {
 
 // ── n8n ───────────────────────────────────────────────────────────────────────
 
-function n8nCard(task: AgentTask, onDetail: () => void, openSettings: () => void): HTMLElement {
+function n8nCard(task: AgentTask, onDetail: () => void, hooks: IntegrationCardHooks): HTMLElement {
   const hasActivity = task.steps.length > 0 && (task.state === "finished" || task.state === "error");
-  if (!hasActivity) return idleCard(task, openSettings);
+  if (!hasActivity) return idleCard(task, hooks);
   const success = task.state === "finished";
   const accent = success ? "#22C55E" : "#F4505E";
   return h(
@@ -379,6 +413,8 @@ export interface IntegrationCardHooks {
   openDetail(): void;
   closeDetail(): void;
   openSettings(): void;
+  /** AI pills: move the chat to this provider and open it. */
+  chatWith(provider: string): void;
 }
 
 /** True when this integration has data worth showing instead of the idle card. */
@@ -408,12 +444,12 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
     const hasActivity = task.steps.length > 0 && (task.state === "finished" || task.state === "error");
     return hooks.detailOpen && hasActivity
       ? n8nDetail(task, hooks.closeDetail)
-      : n8nCard(task, hooks.openDetail, hooks.openSettings);
+      : n8nCard(task, hooks.openDetail, hooks);
   }
   if (task.id === "integration_vercel" && hasIntegrationData(task.id)) {
     return hooks.detailOpen ? vercelDetail(hooks.closeDetail) : vercelCard(hooks.openDetail);
   }
-  if (!hasIntegrationData(task.id)) return idleCard(task, hooks.openSettings);
+  if (!hasIntegrationData(task.id)) return idleCard(task, hooks);
 
   switch (task.id) {
     case "integration_resend":
@@ -427,7 +463,7 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
     case "integration_calcom":
       return calcomCard();
     default:
-      return idleCard(task, hooks.openSettings);
+      return idleCard(task, hooks);
   }
 }
 

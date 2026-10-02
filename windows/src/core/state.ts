@@ -2,6 +2,10 @@
 
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../mochi/engine";
+import {
+  MAIN_DEFAULT, PILL_CATALOG, orderPills, pillDefinition, pillShown, pillStays, sanitizePills, togglePill,
+  type PillChoice, type PillDefinition,
+} from "./catalog";
 
 export type AgentSource = "claudeCode" | "n8n" | "agent";
 export type PillBadge = "approval" | "finished" | "error";
@@ -51,28 +55,13 @@ export interface SearchResult {
   note?: string;
 }
 
-const task = (
-  id: string, name: string, color: string, source: AgentSource,
-): AgentTask => ({
-  id, name, color, state: "idle", stepIndex: 0, steps: [], source, isIntegration: true,
-});
-
-/** AgentTask.integrationAgents — same ids, names and colours as macOS. */
-export const INTEGRATION_AGENTS: AgentTask[] = [
-  task("integration_claude", "VS Code", "#F5F6F8", "claudeCode"),
-  task("integration_resend", "Resend", "#22C55E", "n8n"),
-  task("integration_n8n", "n8n", "#F29B38", "n8n"),
-  task("integration_vercel", "Vercel", "#7C5CFF", "n8n"),
-  task("integration_github", "GitHub", "#F4505E", "n8n"),
-  task("integration_notion", "Notion", "#8C8C8C", "n8n"),
-  task("integration_calcom", "Cal.com", "#C9956A", "n8n"),
-  task("integration_stripe", "Stripe", "#0570DE", "n8n"),
-];
-
-export const TOGGLEABLE_INTEGRATION_IDS = [
-  "integration_resend", "integration_n8n", "integration_vercel", "integration_github",
-  "integration_notion", "integration_calcom", "integration_stripe",
-];
+/** A catalog pill as a fresh, idle task. */
+function catalogTask(def: PillDefinition): AgentTask {
+  return {
+    id: def.id, name: def.name, color: def.color, state: "idle", stepIndex: 0, steps: [],
+    source: def.source, isIntegration: true,
+  };
+}
 
 /** What an integration poller last reported. */
 export interface IntegrationInfo {
@@ -87,7 +76,10 @@ export interface Settings {
   soundVolume: number;
   autoCloseInterval: number;
   absenceInterval: number;
+  /** Declared pills besides VS Code (Settings → Active pills). */
   activeIntegrations: string[];
+  /** The pill in the big card: VS Code, or a declared workspace pill. */
+  mainPill: string;
   screen: "primary" | "cursor";
   autostart: boolean;
   hooksInstalled: boolean;
@@ -113,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   activeIntegrations: [
     "integration_resend", "integration_n8n", "integration_vercel", "integration_github",
   ],
+  mainPill: MAIN_DEFAULT,
   screen: "primary",
   autostart: false,
   hooksInstalled: false,
@@ -215,67 +208,83 @@ class AppState {
     this.notify();
   }
 
-  /** loadIntegrationTasks() — VS Code always on, the rest opt-in (max 4). */
+  /** The declared pills (Settings → Active pills), sanitized. */
+  get pills(): PillChoice {
+    return sanitizePills({ active: this.settings.activeIntegrations, mainPill: this.settings.mainPill });
+  }
+
+  /**
+   * Puts the declared catalog pills in the island: VS Code and the main pill
+   * always, the rest as declared. A session pill that isn't declared stays
+   * while its session runs. Safe to call again whenever the settings change.
+   */
   loadIntegrationTasks() {
-    for (const proto of INTEGRATION_AGENTS) {
-      const shouldLoad =
-        proto.id === "integration_claude" || this.settings.activeIntegrations.includes(proto.id);
-      const idx = this.tasks.findIndex((t) => t.id === proto.id);
-      if (shouldLoad && idx < 0) this.tasks.push({ ...proto, steps: [] });
-      if (!shouldLoad && idx >= 0) this.tasks.splice(idx, 1);
+    const pills = this.pills;
+    this.settings.activeIntegrations = pills.active;
+    this.settings.mainPill = pills.mainPill;
+    for (const def of PILL_CATALOG) {
+      const shown = pillShown(pills, def.id);
+      const idx = this.tasks.findIndex((t) => t.id === def.id);
+      if (shown && idx < 0) this.tasks.push(catalogTask(def));
+      // A session that is running keeps its pill until it ends.
+      const busy = idx >= 0 && (this.tasks[idx].state !== "idle" || this.tasks[idx].steps.length > 0);
+      if (!shown && idx >= 0 && !(def.source === "agent" && busy)) this.tasks.splice(idx, 1);
     }
-    // Order: integration_claude first, then agent_* pills (visible in slice(0,4)),
-    // then other integrations in declaration order.
-    const order = INTEGRATION_AGENTS.map((t) => t.id);
-    this.tasks.sort((a, b) => {
-      const isAgentA = a.id.startsWith("agent_");
-      const isAgentB = b.id.startsWith("agent_");
-      // integration_claude always first
-      if (a.id === "integration_claude") return -1;
-      if (b.id === "integration_claude") return 1;
-      // agent_* before other integrations; preserve insertion order among themselves
-      if (isAgentA && !isAgentB) return -1;
-      if (isAgentB && !isAgentA) return 1;
-      if (isAgentA && isAgentB) return 0;
-      // both known integrations → declaration order
-      return order.indexOf(a.id) - order.indexOf(b.id);
-    });
-    if (!this.focusId) this.focusId = "integration_claude";
+    this.tasks = orderPills(this.tasks);
+    // A new main pill takes the big card, as on macOS.
+    const mainChanged = this.shownMainPill !== null && this.shownMainPill !== pills.mainPill;
+    this.shownMainPill = pills.mainPill;
+    if (mainChanged || !this.focusId || !this.tasks.some((t) => t.id === this.focusId)) {
+      this.focusId = pills.mainPill;
+    }
     this.notify();
   }
 
+  /** The main pill as last loaded, to notice a change. */
+  private shownMainPill: string | null = null;
+
+  /**
+   * A session ended. A declared pill (and VS Code, and the main pill) goes
+   * back to idle; any other pill leaves the island.
+   */
   removeTask(id: string) {
     const idx = this.tasks.findIndex((t) => t.id === id);
     if (idx < 0) return;
-    this.tasks.splice(idx, 1);
-    if (this.focusId === id) this.focusId = this.tasks[0]?.id ?? "integration_claude";
+    if (pillStays(this.pills, id)) {
+      const t = this.tasks[idx];
+      Object.assign(t, { state: "idle", steps: [], stepIndex: 0, pillBadge: null });
+      t.name = pillDefinition(id)?.name ?? t.name;
+    } else {
+      this.tasks.splice(idx, 1);
+      if (this.focusId === id) this.focusId = this.pills.mainPill;
+    }
     this.notify();
   }
 
-  /** Creates a dynamic agent_ pill on first event; no-ops if it already exists.
-   *  Inserted right after integration_claude so it appears in the visible slice(0,4). */
+  /**
+   * The pill for an agent's session, on its first event. A catalog agent
+   * (Gemini CLI, Antigravity) takes its catalog look; any other tagged agent
+   * gets its own pill right after VS Code. No-op when the pill is there.
+   */
   upsertExternalAgent(id: string, name: string, color: string) {
     if (this.tasks.some((t) => t.id === id)) return;
-    const at = this.tasks.findIndex((t) => t.id === "integration_claude") + 1;
-    this.tasks.splice(at, 0, {
+    const def = pillDefinition(id);
+    this.tasks.push(def ? catalogTask(def) : {
       id, name, color,
       state: "idle", stepIndex: 0, steps: [],
       source: "agent", isIntegration: false,
     });
+    this.tasks = orderPills(this.tasks);
     if (!this.focusId) this.focusId = id;
     this.notify();
   }
 
+  /** Settings → Active pills: on or off, within the rules of the catalog. */
   toggleIntegration(id: string) {
-    if (id === "integration_claude") return;
-    const active = this.settings.activeIntegrations;
-    if (active.includes(id)) {
-      this.settings.activeIntegrations = active.filter((x) => x !== id);
-      if (this.focusId === id) this.focusId = "integration_claude";
-    } else {
-      if (active.length >= 4) return;
-      this.settings.activeIntegrations = [...active, id];
-    }
+    const next = togglePill(this.pills, id);
+    this.settings.activeIntegrations = next.active;
+    this.settings.mainPill = next.mainPill;
+    if (this.focusId === id && !pillShown(next, id)) this.focusId = next.mainPill;
     this.loadIntegrationTasks();
   }
 

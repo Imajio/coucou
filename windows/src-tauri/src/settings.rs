@@ -12,6 +12,9 @@ pub struct Settings {
     pub auto_close_interval: f64,
     pub absence_interval: f64,
     pub active_integrations: Vec<String>,
+    /// The pill in the island's big card: VS Code, or a declared workspace pill.
+    #[serde(default = "default_main_pill")]
+    pub main_pill: String,
     /// "primary" = the main display, "cursor" = whichever display the mouse is on.
     pub screen: String,
     pub autostart: bool,
@@ -37,6 +40,10 @@ pub struct Settings {
     /// Seconds the cursor must rest on the top edge to bring a hidden island out.
     #[serde(default = "default_hover_reveal_delay")]
     pub hover_reveal_delay: f64,
+}
+
+fn default_main_pill() -> String {
+    "integration_claude".to_string()
 }
 
 fn default_provider() -> String {
@@ -83,6 +90,7 @@ impl Default for Settings {
             sound_volume: 0.12,
             auto_close_interval: 15.0,
             absence_interval: 180.0,
+            main_pill: default_main_pill(),
             active_integrations: vec![
                 "integration_resend".into(),
                 "integration_n8n".into(),

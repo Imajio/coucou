@@ -308,3 +308,16 @@ button.link:hover:not(:disabled) {
   background: transparent;
   color: var(--ink);
 }
+
+/* Active pills: category headings. */
+.pill-group {
+  margin-top: 4px;
+  font: 600 11px var(--font);
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.switch:disabled {
+  opacity: 0.35;
+}
