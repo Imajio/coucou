@@ -439,3 +439,61 @@ pub fn window_at_cursor(with_url: bool) -> Option<super::WindowInfo> {
         Some(super::WindowInfo { app_name: super::app_display_name(&stem), title, url })
     }
 }
+
+// ── Mail (a dropped file, from the mail card) ─────────────────────────────────
+
+/// A new message in the default mail app (Outlook, Thunderbird…) through Simple
+/// MAPI, file attached, for the user to send. None when no app answers MAPI.
+/// Blocks until the app's compose window is closed: call off the main thread.
+pub fn compose_mail(to: &str, subject: &str, body: &str, path: Option<&str>) -> Option<String> {
+    use ::windows::core::{s, PCWSTR};
+    use ::windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+    use ::windows::Win32::System::Mapi::{
+        MapiFileDescW, MapiMessageW, MapiRecipDescW, LPMAPISENDMAILW, MAPI_DIALOG, MAPI_LOGON_UI, MAPI_TO,
+        MAPI_USER_ABORT, SUCCESS_SUCCESS,
+    };
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+    unsafe {
+        let dll = wide("MAPI32.DLL");
+        let module = LoadLibraryW(PCWSTR(dll.as_ptr())).ok()?;
+        let send: LPMAPISENDMAILW = std::mem::transmute(GetProcAddress(module, s!("MAPISendMailW"))?);
+        let send = send?;
+
+        let mut address = wide(&format!("SMTP:{}", to.trim()));
+        let mut display = wide(to.trim());
+        let mut subject = wide(subject);
+        let mut body = wide(body);
+        let mut recipient = MapiRecipDescW {
+            ulRecipClass: MAPI_TO,
+            lpszName: PWSTR(display.as_mut_ptr()),
+            lpszAddress: PWSTR(address.as_mut_ptr()),
+            ..Default::default()
+        };
+        let mut file_path = path.map(wide);
+        let mut file_name = path
+            .and_then(|p| std::path::Path::new(p).file_name())
+            .map(|n| wide(&n.to_string_lossy()));
+        let mut file = MapiFileDescW {
+            nPosition: u32::MAX, // "anywhere"
+            lpszPathName: file_path.as_mut().map(|v| PWSTR(v.as_mut_ptr())).unwrap_or(PWSTR::null()),
+            lpszFileName: file_name.as_mut().map(|v| PWSTR(v.as_mut_ptr())).unwrap_or(PWSTR::null()),
+            ..Default::default()
+        };
+        let message = MapiMessageW {
+            lpszSubject: PWSTR(subject.as_mut_ptr()),
+            lpszNoteText: PWSTR(body.as_mut_ptr()),
+            nRecipCount: 1,
+            lpRecips: &mut recipient,
+            nFileCount: u32::from(file_path.is_some()),
+            lpFiles: if file_path.is_some() { &mut file } else { std::ptr::null_mut() },
+            ..Default::default()
+        };
+        match send(0, 0, &message, MAPI_DIALOG | MAPI_LOGON_UI, 0) {
+            SUCCESS_SUCCESS => Some("compose".into()),
+            MAPI_USER_ABORT => Some("cancelled".into()),
+            _ => None,
+        }
+    }
+}

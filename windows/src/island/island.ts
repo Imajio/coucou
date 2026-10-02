@@ -25,7 +25,7 @@ const BOT_OVERHANG = 40;
 const HIT_MARGIN = 14;
 
 /** Views with a text field: showing one gives the island the keyboard. */
-const TEXT_VIEWS: ReadonlySet<IslandViewName> = new Set(["prompt", "translate"]);
+const TEXT_VIEWS: ReadonlySet<IslandViewName> = new Set(["prompt", "translate", "mail"]);
 
 /** The three views the drop sequence owns; leaving them stops the engine. */
 const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading", "choose"]);

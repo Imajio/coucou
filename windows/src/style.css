@@ -1841,3 +1841,74 @@ input[type="range"]::-webkit-slider-thumb {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ── Mail (send a dropped file) ─────────────────────────────────────────── */
+
+.mail-stack {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px 10px 98px;
+}
+
+.mail-heading {
+  font: 600 12px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mail-row label {
+  flex: 0 0 52px;
+  font: 400 11.5px var(--font);
+  color: var(--dim-2);
+}
+
+.mail-input,
+.mail-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: 400 12.5px var(--font);
+  padding: 4px 9px;
+  outline: none;
+  cursor: text;
+}
+
+.mail-input:focus,
+.mail-body:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.mail-body {
+  flex: 1 1 auto;
+  min-height: 40px;
+  resize: none;
+}
+
+.mail-status {
+  font: 400 11px var(--font);
+  color: var(--dim);
+  align-self: center;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mail-status.err {
+  color: var(--red-text);
+}

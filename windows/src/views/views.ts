@@ -11,6 +11,7 @@ import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { buildMusic } from "./music";
+import { buildMail } from "./mail";
 import { Bridge } from "../core/bridge";
 import { pickerModels, switchProvider } from "../core/models";
 import { buildTranslate } from "./translate";
@@ -532,8 +533,8 @@ export function buildViews(
   map.set("choose", buildChoose(actions));
   map.set("music", buildMusic());
   map.set("translate", buildTranslate(actions));
-  // Not in the Windows v1: sending a file by email, window attach + web result.
-  map.set("mail", buildPlaceholder("Sending by email isn't in this version.", ""));
+  map.set("mail", buildMail(actions));
+  // Not used on macOS either: a structured web result for an attached window.
   map.set("searching", buildPlaceholder("Claude is searching…", ""));
   map.set("result", buildPlaceholder("Result", ""));
   return map;
