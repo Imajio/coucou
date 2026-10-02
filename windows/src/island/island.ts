@@ -140,6 +140,8 @@ export class Island {
         if (!req) return;
         Sound.play(d === "deny" ? "blip" : "approve");
         void Bridge.approvalDecision(req.requestId, d);
+        // Answered: the terminal that asked gets the keyboard back.
+        void Bridge.releaseFocus();
         State.pendingApproval = null;
         State.isPinned = false;
         this.fsm.pinned = false;
@@ -266,6 +268,8 @@ export class Island {
       State.isPinned = false;
       void Bridge.focusWindow(false);
     }
+    // Typing must never land in an island nobody can see.
+    if (mode === "hidden") void Bridge.releaseFocus();
     if (mode !== "expanded") {
       this.engine.resetMorph();
       // Nothing can be seen of the sequence once the island is shut, and leaving
@@ -542,6 +546,9 @@ export class Island {
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
       State.lastActivity = performance.now();
+      // A click is the user picking the island: let it take the keyboard so
+      // Esc reaches it. Hovering alone never steals focus.
+      void Bridge.focusWindow(true);
       if (State.mode !== "expanded") {
         this.fsm.click();
         return;
@@ -552,9 +559,13 @@ export class Island {
       }
     });
 
+    // Esc closes one stage at a time: open, then compact, then hidden. A card
+    // waiting for an answer (pinned) stays put.
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && State.mode === "expanded" && !State.isPinned) this.collapse();
       State.lastActivity = performance.now();
+      if (e.key !== "Escape" || State.isPinned) return;
+      if (State.mode === "expanded") this.collapse();
+      else if (State.mode === "compact") this.fsm.forceHidden();
     });
 
     void onDragDrop((e) => this.onDragDrop(e));
