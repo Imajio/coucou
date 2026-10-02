@@ -15,8 +15,9 @@ use ::windows::Win32::System::SystemInformation::GetLocalTime;
 use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GetClassNameW, GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW,
-    GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+    EnumChildWindows, GetClassNameW, GetCursorPos, GetForegroundWindow, GetWindowLongPtrW,
+    IsWindow, SetForegroundWindow, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW,
 };
 
 use super::LocalTime;
@@ -228,6 +229,31 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
             ex | WS_EX_NOACTIVATE.0 as isize
         };
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
+    }
+}
+
+/// The window that has the keyboard right now, as a raw handle (0 = none).
+/// Raw because an HWND cannot be kept in shared state across threads.
+pub fn foreground_window() -> isize {
+    unsafe { GetForegroundWindow().0 as isize }
+}
+
+/// Raw handle of one of our windows, for comparing with `foreground_window()`.
+pub fn window_handle(win: &WebviewWindow) -> isize {
+    hwnd_of(win).map(|h| h.0 as isize).unwrap_or(0)
+}
+
+/// Hands the keyboard to a window remembered by `foreground_window()`, if it is
+/// still around.
+pub fn activate_window(handle: isize) {
+    if handle == 0 {
+        return;
+    }
+    let hwnd = HWND(handle as *mut _);
+    unsafe {
+        if IsWindow(Some(hwnd)).as_bool() {
+            let _ = SetForegroundWindow(hwnd);
+        }
     }
 }
 

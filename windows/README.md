@@ -44,7 +44,7 @@ installs for the current user only — no admin prompt.
 | Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Mochi for two seconds | Hearts |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
-| `Esc` | Closes the island |
+| Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
 | Tray icon | Open, Settings…, Pause, Quit |
 
 Everything else happens on its own: a Claude Code permission request opens the

@@ -30,6 +30,9 @@ use settings::Settings;
 pub struct Shared {
     pub settings: Mutex<Settings>,
     pub gate: Arc<PollGate>,
+    /// The window that had the keyboard before the island took it, so it can be
+    /// handed back when the island hides. Raw handle; 0 = nothing remembered.
+    pub prev_foreground: Mutex<isize>,
 }
 
 #[derive(Serialize)]
@@ -110,11 +113,36 @@ fn set_island_rect(app: AppHandle, shared: State<Shared>, x: f64, y: f64, width:
 }
 
 #[tauri::command]
-fn focus_window(app: AppHandle, focused: bool) {
+fn focus_window(app: AppHandle, shared: State<Shared>, focused: bool) {
     let Some(win) = island::window(&app) else { return };
+    if focused {
+        // Remember who had the keyboard, unless it is already one of ours.
+        let fg = platform::foreground_window();
+        let settings_win = app
+            .get_webview_window("settings")
+            .map(|w| platform::window_handle(&w))
+            .unwrap_or(0);
+        if fg != 0 && fg != platform::window_handle(&win) && fg != settings_win {
+            *shared.prev_foreground.lock().unwrap() = fg;
+        }
+    }
     platform::set_activating(&win, focused);
     if focused {
         let _ = win.set_focus();
+    }
+}
+
+/// The island is going away: stop taking the keyboard, and if it still has it,
+/// give it back to the window that had it before. Typing must never land in an
+/// island nobody can see.
+#[tauri::command]
+fn release_focus(app: AppHandle, shared: State<Shared>) {
+    let Some(win) = island::window(&app) else { return };
+    platform::set_activating(&win, false);
+    let prev = std::mem::take(&mut *shared.prev_foreground.lock().unwrap());
+    let ours = platform::window_handle(&win);
+    if ours != 0 && platform::foreground_window() == ours {
+        platform::activate_window(prev);
     }
 }
 
@@ -372,6 +400,7 @@ pub fn run() {
         .manage(Shared {
             settings: Mutex::new(loaded.clone()),
             gate: gate.clone(),
+            prev_foreground: Mutex::new(0),
         })
         .manage(Pending::default())
         .manage(Chat::default())
@@ -381,6 +410,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            release_focus,
             reposition,
             open_url,
             open_in_vscode,

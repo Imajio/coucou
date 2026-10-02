@@ -275,6 +275,20 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
     }
 }
 
+/// No portable way to ask which window has the keyboard (Wayland keeps that to
+/// the compositor): 0 means "unknown", so nothing is handed back on hide.
+pub fn foreground_window() -> isize {
+    0
+}
+
+pub fn window_handle(_win: &WebviewWindow) -> isize {
+    0
+}
+
+/// Giving up the keyboard (`set_activating(false)`) is all Linux can do; the
+/// compositor decides who gets it next.
+pub fn activate_window(_handle: isize) {}
+
 /// Only this rectangle (window-logical pixels) takes the mouse; `None` means
 /// the whole window does. Everything outside goes to the window underneath.
 pub fn set_input_region(win: &WebviewWindow, rect: Region) {
