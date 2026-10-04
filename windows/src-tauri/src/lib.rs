@@ -478,6 +478,7 @@ pub fn run() {
         })
         .manage(Pending::default())
         .manage(Conversation::default())
+        .manage(agent::Agents::load())
         .invoke_handler(tauri::generate_handler![
             boot,
             save_settings,
@@ -517,6 +518,18 @@ pub fn run() {
             media::media_set_volume,
             media::media_artwork,
             translate::translate,
+            agent::agent_roles,
+            agent::agent_list,
+            agent::agent_get,
+            agent::agent_approvals,
+            agent::agent_defaults,
+            agent::agent_create,
+            agent::agent_send,
+            agent::agent_stop,
+            agent::agent_delete,
+            agent::agent_update,
+            agent::agent_decide,
+            agent::agent_check_folder,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
