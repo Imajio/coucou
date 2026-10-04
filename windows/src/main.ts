@@ -6,6 +6,7 @@ import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
 import { registerHookHandlers } from "./island/hooks";
+import { registerAgentHandlers } from "./island/agents";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
 
 async function main() {
@@ -65,6 +66,7 @@ async function main() {
 
   registerHookHandlers(island);
   registerIntegrationHandlers(island);
+  registerAgentHandlers(island);
 
   island.launch();
 

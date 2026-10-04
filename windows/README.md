@@ -40,7 +40,7 @@ installs for the current user only — no admin prompt.
 | What you do | What happens |
 |---|---|
 | Rest the mouse on the very top-centre of the screen | Mochi peeks out (after the hover delay, 1 s by default) |
-| Click the small island | It opens on the tab you left it on (Overview, Ask, Music, Translate or Settings), even after a restart |
+| Click the small island | It opens on the tab you left it on (Overview, Ask, Delegate, Music, Translate or Settings), even after a restart |
 | Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Mochi for two seconds | Hearts |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it or to send it by email |
@@ -48,7 +48,8 @@ installs for the current user only — no admin prompt.
 | Click the island, then `Esc` | Open island folds to compact; compact island hides. Hiding hands the keyboard back to the app you were in |
 | Music tab (♫) in the open island | What is playing, with previous, play/pause, next and volume |
 | Translate tab (globe) in the open island | Google Translate: pick the languages, type, press `Enter` |
-| Tray icon | Open, Settings…, Pause, Quit |
+| Delegate tab (two people) in the open island | Pick a role, say what to do, press `Enter`: a new agent session starts and gets its own avatar |
+| Tray icon | Open, Sessions..., Settings…, Pause, Quit |
 
 Everything else happens on its own: a Claude Code permission request opens the
 island with **Deny / Allow**, a finished session shows what it did, and
@@ -144,6 +145,81 @@ there are kept), Antigravity's in their own `coucou` set in
 `%USERPROFILE%\.gemini\config\hooks.json`. Their sessions then show up in the
 island with their own pill and step-by-step progress, like Claude Code's.
 
+## Agent sessions
+
+Coucou is also a harness of its own: it runs AI sessions on your computer that
+read and change code, run commands and report back, like Claude Code, with a
+window instead of a terminal. Each session is one of Mochi's avatars.
+
+Start one from **Sessions...** in the tray menu, or from the island's
+**Delegate** tab. A session has:
+
+- **a role**, which sets how it works and which tools it has:
+
+  | Role | Does | Tools |
+  |---|---|---|
+  | Engineer | Writes and fixes code, runs the tests | all but delegation |
+  | Lead | Plans the work and delegates each piece to a new session | reading, web, plan, delegation |
+  | Reviewer | Reviews code and reports problems | reading, commands (for tests), plan |
+  | Researcher | Answers with evidence from the code and the web | reading, web, plan |
+  | Tester | Writes and runs tests, reports what fails | reading, writing, commands, plan |
+  | Writer | Writes docs, READMEs, changelogs | reading, writing, web, plan |
+  | Custom | Whatever you write in its instructions | everything |
+
+  A role's tools are enforced by Coucou, not just described to the model: a
+  reviewer has no tool that writes. Its instructions can be edited for one
+  session in the form (**Role instructions**).
+- **a task**: what you want done, as you would tell a colleague. Follow up in
+  the same session afterwards; it keeps the whole conversation.
+- **a folder**: where it works. Relative paths start there.
+- **a provider and a model**, any of the chat's (below). Both can be changed in
+  the middle of a session: the next turn goes to the new model with the whole
+  history, tool calls included.
+- **a permission mode**:
+  - **Ask first** (the default): asks before every file change, command and web
+    request, and before reading outside its folder.
+  - **Edit files**: edits files in its folder on its own; asks before commands
+    and web requests.
+  - **Full auto**: does everything on its own.
+
+  Writing outside its folder always waits for you, whatever the mode.
+
+When a session needs a yes or no, the island opens on its request: **Allow**,
+**Deny**, or **Details** for the whole change in the sessions window, where
+**Always allow** also lets that tool run without asking for the rest of the
+session. Requests from several sessions queue up.
+
+The sessions window shows every session in the sidebar, the selected one's plan,
+its conversation with each tool call (the change or command and its output), and
+the box to follow up or stop it. In the island, the busy and recent sessions are
+avatar pills: working, waiting for you, done or failed, with their plan in the
+ticker.
+
+**Tools**: read, write and edit files, list a folder, find files by pattern,
+search their contents (regular expressions), run a shell command (Git Bash when
+it is installed, PowerShell otherwise; no console window, nothing to type into,
+120 s by default, and the whole process tree ends on a timeout or a stop), fetch
+a web page, keep a plan, and (for a lead) delegate.
+
+**Delegation**: a lead hands a self-contained piece of work to a new session
+with another role. It shows up as its own avatar under the lead, works in the
+same folder, never gets a freer permission mode than the lead, cannot delegate
+further, and stops when the lead is stopped. Its final answer goes back to the
+lead.
+
+Sessions are saved in `%APPDATA%\Coucou\sessions`, one file each, and come back
+after a restart. One that was working when Coucou closed is marked stopped:
+send it a message to continue.
+
+### Adding a provider
+
+Providers live in one table, `PROVIDERS` in `src-tauri/src/llm/mod.rs`, shared by
+the chat and the sessions. A provider that speaks one of the three formats
+Coucou knows (Anthropic Messages, OpenAI Responses or OpenAI Chat Completions,
+which nearly every vendor offers) is one entry there: its id, name, format,
+address and the name of its key. A server you run yourself needs no change at
+all: use **Custom endpoint**.
+
 ## Chat and keys
 
 The chat works with several AI providers, and you can switch at any point of a
@@ -236,6 +312,8 @@ problems. It stays on your machine.
   the top edge instead of hiding in a notch.
 - Permission approval works from **any** terminal; the Mac build only listens to
   VS Code sessions.
+- Agent sessions (the Delegate tab and the sessions window) are only in the
+  Windows and Linux app for now.
 
 ## Linux
 

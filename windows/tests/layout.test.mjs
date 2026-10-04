@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 const { resumeView, RESUMABLE_VIEWS } = await import("../src/core/layout.ts");
 
 test("reopening returns to the tab that was left", () => {
-  for (const tab of ["prompt", "music", "translate", "settings"]) {
+  for (const tab of ["prompt", "music", "translate", "delegate", "settings"]) {
     assert.equal(resumeView(tab, "overview"), tab);
   }
 });

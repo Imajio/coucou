@@ -23,6 +23,7 @@ export type IslandViewName =
   | "settings"
   | "music"
   | "translate"
+  | "delegate"
   | "greeting";
 
 export type BotStateName =
@@ -89,6 +90,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   settings: { height: 160, botX: 54, botY: null, botDiameter: 46, agentMode: "none" },
   music: { height: 196, botX: 50, botY: null, botDiameter: 42, agentMode: "none" },
   translate: { height: 244, botX: 50, botY: null, botDiameter: 42, agentMode: "none" },
+  delegate: { height: 244, botX: 50, botY: null, botDiameter: 42, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
 };
 
@@ -98,7 +100,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
  * neither does the drop zone, which a file dragged past opens on its own.
  */
 export const RESUMABLE_VIEWS: ReadonlySet<IslandViewName> = new Set<IslandViewName>([
-  "overview", "empty", "prompt", "music", "translate", "settings",
+  "overview", "empty", "prompt", "music", "translate", "delegate", "settings",
 ]);
 
 /**
