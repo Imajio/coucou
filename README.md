@@ -33,6 +33,7 @@ Meet **Mochi**: a soft little squircle with big eyes that pops out of your notch
 ## Features
 
 - 🤖 **Claude Code, Gemini CLI, Antigravity and other agents, live** — see every session in your notch: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Mochi does a happy little jump. Cursor and Codex pills are coming soon.
+- 🧑‍🤝‍🧑 **Run your own AI sessions** *(Windows and Linux)*: give a session a role (engineer, lead, reviewer, researcher, tester, writer or your own), a task, a folder and any provider's model. It reads and edits code, runs commands and reports back, as one of Mochi's avatars, and asks you before anything its permission mode doesn't allow. A lead delegates pieces of work to new sessions with other roles.
 - ✅ **Approve from the notch** — Claude Code permission requests show up with **Allow / Deny**. One click, back to work.
 - 🧑‍💻 **Jump to the right terminal**: open the exact terminal window of a session.
 - 💬 **Chat with Claude, or with Gemini and OpenAI models using your own keys**: on macOS click the model name above the chat box, on Windows and Linux use the two menus above it, to switch provider and pick a model; the list comes from each API account. Windows and Linux also take OpenRouter, a local Ollama and any OpenAI-compatible server.

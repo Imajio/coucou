@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Windows and Linux: Coucou runs AI sessions of its own, like Claude Code with a window. Each session has a role (engineer, lead, reviewer, researcher, tester, writer or custom), a task, a folder, a model from any chat provider and a permission mode; it works through file, search, command and web tools, keeps a plan, and asks before what its mode doesn't allow. Sessions are Mochi's avatars in the island, start from the new Delegate tab or the sessions window (tray: Sessions...), can switch model mid-way, and a lead can delegate work to new sessions that report back
 - Windows and Linux: every sound plays twice as loud at the same volume setting
 - Windows and Linux: the Cal.com pill shows the same calendar as on macOS instead of a list: half a month at a time with a dot on each day that has a call, then the day's calls, then one call with the attendee's name, email and notes
 - Windows and Linux: send a dropped file by email from the island, as on macOS: through Resend when its key and sender address are set, otherwise in a new message of the default mail app with the file attached
