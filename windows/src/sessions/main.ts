@@ -249,10 +249,23 @@ function updateSessionChrome() {
     modeSel.append(h("option", { value: m, text: MODE_LABELS[m].name, selected: m === s.mode }));
   }
   modeSel.addEventListener("change", () => void Agents.update(s.id, { mode: modeSel.value as SessionMode }));
-  const del = h("button", { class: "btn ghost", text: "Delete", onclick: async () => {
-    if (!confirm(`Delete "${s.name}" and its history?`)) return;
+  // Two clicks: the first one asks, in place.
+  const del = h("button", { class: "btn ghost", text: "Delete", title: "Delete this session and its history" }) as HTMLButtonElement;
+  let armed = false;
+  del.addEventListener("click", async () => {
+    if (!armed) {
+      armed = true;
+      del.textContent = "Delete? Click again";
+      del.classList.add("danger");
+      window.setTimeout(() => {
+        armed = false;
+        del.textContent = "Delete";
+        del.classList.remove("danger");
+      }, 3000);
+      return;
+    }
     await Agents.remove(s.id);
-  } });
+  });
   const parent = s.parent ? sessions.get(s.parent) : undefined;
   headerEl.append(
     avatar(s, 30),
