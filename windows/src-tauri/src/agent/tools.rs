@@ -89,7 +89,7 @@ pub const TOOLS: &[ToolDef] = &[
     ToolDef {
         name: "list_dir",
         access: Access::Read,
-        description: "Lists a folder: sub-folders end with `/`, files show their size.",
+        description: "Lists a folder: sub-folders end with `/`, files show their size and when they last changed.",
         schema: || json!({
             "type": "object",
             "properties": { "path": { "type": "string", "description": "Folder. Default: the session folder." } }
@@ -478,8 +478,13 @@ fn list(ws: &Workspace, dir: &Path) -> Result<String, String> {
             if meta.as_ref().is_some_and(|m| m.is_dir()) {
                 (true, format!("{name}/"))
             } else {
-                let size = meta.map(|m| m.len()).unwrap_or(0);
-                (false, format!("{name} ({})", human_size(size)))
+                let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+                let changed = meta
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| format!(", changed {}", super::session::date_time(d.as_millis() as u64)))
+                    .unwrap_or_default();
+                (false, format!("{name} ({}{changed})", human_size(size)))
             }
         })
         .collect();

@@ -165,6 +165,16 @@ pub struct Summary {
     pub entries: usize,
 }
 
+/// A reply's first line without its Markdown marks, for a one-line preview.
+pub fn plain_line(text: &str) -> String {
+    let line = text
+        .lines()
+        .map(|l| l.trim().trim_start_matches(['#', '>', '-', '*', '+', ' ']).trim())
+        .find(|l| !l.is_empty() && !l.starts_with("```"))
+        .unwrap_or("");
+    line.replace("**", "").replace('`', "")
+}
+
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -199,7 +209,7 @@ impl SessionData {
         for e in self.log.iter().rev() {
             let line = match e {
                 Entry::Tool { summary, .. } => summary.clone(),
-                Entry::Assistant { text, .. } | Entry::User { text, .. } => text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").to_string(),
+                Entry::Assistant { text, .. } | Entry::User { text, .. } => plain_line(text),
                 Entry::Error { text, .. } => text.clone(),
                 Entry::Note { .. } => continue,
             };
@@ -268,6 +278,12 @@ pub fn needs_approval(mode: Mode, plan: &Plan, ws: &Workspace, always: &[String]
         (Access::Write, Mode::Edits) => false,
         _ => true,
     }
+}
+
+/// `YYYY-MM-DD HH:MM UTC` for a Unix time in ms.
+pub fn date_time(ms: u64) -> String {
+    let minutes = (ms / 60_000) % (24 * 60);
+    format!("{} {:02}:{:02} UTC", date(ms), minutes / 60, minutes % 60)
 }
 
 /// `YYYY-MM-DD` for a Unix time in ms (UTC), without a date library.
@@ -383,10 +399,22 @@ mod tests {
     }
 
     #[test]
+    fn previews_drop_markdown_marks() {
+        assert_eq!(plain_line("## Done
+
+I created **hello.txt**"), "Done");
+        assert_eq!(plain_line("
+- run `npm test`"), "run npm test");
+        assert_eq!(plain_line("```
+code"), "code");
+    }
+
+    #[test]
     fn dates_are_computed_without_a_library() {
         assert_eq!(date(0), "1970-01-01");
         assert_eq!(date(951_782_400_000), "2000-02-29");
         assert_eq!(date(1_791_158_400_000), "2026-10-05");
+        assert_eq!(date_time(1_791_158_400_000 + 13 * 3_600_000 + 7 * 60_000), "2026-10-05 13:07 UTC");
     }
 
     #[test]
