@@ -18,6 +18,9 @@ import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h } from "../views/dom";
+import { Agents } from "../core/agentApi";
+import { sessionIdOf } from "../core/agents";
+import { decideSession } from "./agents";
 import { IslandStateMachine } from "./fsm";
 
 const BOT_OVERHANG = 40;
@@ -25,7 +28,7 @@ const BOT_OVERHANG = 40;
 const HIT_MARGIN = 14;
 
 /** Views with a text field: showing one gives the island the keyboard. */
-const TEXT_VIEWS: ReadonlySet<IslandViewName> = new Set(["prompt", "translate", "mail"]);
+const TEXT_VIEWS: ReadonlySet<IslandViewName> = new Set(["prompt", "translate", "mail", "delegate"]);
 
 /** The three views the drop sequence owns; leaving them stops the engine. */
 const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading", "choose"]);
@@ -147,11 +150,21 @@ export class Island {
         State.setFocus(id);
         Sound.play("blip");
       },
-      openTerminal: () => void openSession(State.focusTask),
+      openTerminal: () => {
+        const sessionId = State.focusTask ? sessionIdOf(State.focusTask.id) : null;
+        if (sessionId) void Agents.openWindow(sessionId).catch(() => {});
+        else void openSession(State.focusTask);
+      },
       // The ↗ button — same targets as openAgentTarget() on macOS.
       openTarget: () => {
         const task = State.focusTask;
         if (!task) return;
+        // An agent session opens in the sessions window.
+        const sessionId = sessionIdOf(task.id);
+        if (sessionId) {
+          void Agents.openWindow(sessionId).catch(() => {});
+          return;
+        }
         const urls: Record<string, string> = {
           integration_resend: "https://resend.com/emails",
           integration_vercel: "https://vercel.com/dashboard",
@@ -168,6 +181,10 @@ export class Island {
         if (url) void Bridge.openUrl(url);
       },
       decide: (d) => {
+        if (State.sessionApproval) {
+          void decideSession(this, d);
+          return;
+        }
         const req = State.pendingApproval;
         void Bridge.log(`decide ${d} req=${req?.requestId ?? "none"}`);
         if (!req) return;

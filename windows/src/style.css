@@ -2120,3 +2120,102 @@ input[type="range"]::-webkit-slider-thumb {
 .mail-status.err {
   color: var(--red-text);
 }
+
+/* ── Delegate (start an agent session) ──────────────────────────────────── */
+
+.dg-stack {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 12px 84px;
+}
+
+.dg-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.dg-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 500 11.5px var(--font);
+  color: var(--dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  padding: 3px 9px;
+  cursor: default;
+}
+
+.dg-role i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.dg-role:hover {
+  color: var(--ink-2);
+}
+
+.dg-role.on {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dg-task {
+  flex: 1 1 auto;
+  min-height: 52px;
+  resize: none;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: 400 12.5px/1.45 var(--font);
+  padding: 7px 10px;
+  outline: none;
+  cursor: text;
+}
+
+.dg-task:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dg-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dg-chip {
+  font: 500 11px var(--mono);
+  color: var(--dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+  padding: 3px 9px;
+  max-width: 170px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.dg-chip:hover {
+  color: var(--ink-2);
+}
+
+.dg-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 400 11px var(--font);
+  color: var(--red-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

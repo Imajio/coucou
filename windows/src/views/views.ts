@@ -15,6 +15,7 @@ import { buildMail } from "./mail";
 import { Bridge } from "../core/bridge";
 import { pickerModels, switchProvider } from "../core/models";
 import { buildTranslate } from "./translate";
+import { buildDelegate } from "./delegate";
 import { renderIntegrationCard, resetIntegrationCards, type IntegrationCardHooks } from "./integrations";
 
 export interface ViewActions {
@@ -45,6 +46,13 @@ export interface ViewHost {
 }
 
 // ── Shared pieces ─────────────────────────────────────────────────────────────
+
+const SOURCE_LABELS: Record<AgentTask["source"], string> = {
+  claudeCode: "Claude Code",
+  agent: "Agent",
+  session: "Session",
+  n8n: "n8n",
+};
 
 function card(wash: Wash, ...children: (Node | string)[]): HTMLElement {
   const el = h("div", { class: wash ? "card wash" : "card" }, ...children);
@@ -87,6 +95,7 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
 export function buildHeader(actions: ViewActions): ViewHost {
   const tabHome = h("button", { class: "tab", title: "Overview", onclick: () => go("overview") }, svg(ICONS.house, 13));
   const tabChat = h("button", { class: "tab", title: "Ask", onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
+  const tabDelegate = h("button", { class: "tab", title: "Delegate to an agent session", onclick: () => go("delegate") }, svg(ICONS.team, 14));
   const tabDrop = h("button", { class: "tab", title: "Drop", onclick: () => go("upload") }, svg(ICONS.plus, 13));
   const tabMusic = h("button", { class: "tab", title: "Music", onclick: () => go("music") }, svg(ICONS.music, 13));
   const tabTranslate = h("button", { class: "tab", title: "Translate", onclick: () => go("translate") }, svg(ICONS.globe, 13));
@@ -102,7 +111,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabHome, tabChat, tabDrop, tabMusic, tabTranslate),
+    h("div", { class: "tabs" }, tabHome, tabChat, tabDelegate, tabDrop, tabMusic, tabTranslate),
     h("div", { class: "header-actions" }, gearBtn, soundBtn),
   );
 
@@ -112,6 +121,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const v = State.view;
       tabHome.classList.toggle("on", v === "overview" || v === "empty");
       tabChat.classList.toggle("on", v === "prompt");
+      tabDelegate.classList.toggle("on", v === "delegate");
       tabDrop.classList.toggle("on", v === "upload");
       tabMusic.classList.toggle("on", v === "music");
       tabTranslate.classList.toggle("on", v === "translate");
@@ -194,7 +204,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       // A pill with a live agent session (Claude Code in VS Code, Gemini CLI,
       // Antigravity, any tagged agent) keeps the ticker; service pills show
       // their own card, exactly like IntegrationCardView.
-      const isSession = task?.id === "integration_claude" || task?.source === "agent";
+      const isSession = task?.id === "integration_claude" || task?.source === "agent" || task?.source === "session";
       const sessionActive = !!task && isSession && (task.state !== "idle" || task.steps.length > 0);
 
       if (task && sessionActive) {
@@ -208,7 +218,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         who.append(
           dot(task.color, 7),
           h("span", { class: "name", text: task.name }),
-          h("span", { class: "tool", text: task.source === "claudeCode" ? "Claude Code" : task.source === "agent" ? "Agent" : "n8n" }),
+          h("span", { class: "tool", text: SOURCE_LABELS[task.source] }),
         );
         if (task.steps.length > 1) {
           who.append(h("span", {
@@ -341,17 +351,24 @@ function buildApproval(actions: ViewActions): ViewHost {
       // The whole point of approving here rather than in the terminal: this line
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
-      code.textContent = State.pendingApproval?.command || State.pendingApproval?.tool || "…";
-      // Two buttons, built once. Rebuilding them between a mouse-down and a
-      // mouse-up would swallow the click, and there is nothing left to vary:
-      // "Always" is gone until the remembered-rules list exists to back it.
-      if (rowKey === "built") return;
-      rowKey = "built";
+      const session = State.sessionApproval;
+      code.textContent = session
+        ? session.tool === "run_command"
+          ? session.detail
+          : session.summary
+        : State.pendingApproval?.command || State.pendingApproval?.tool || "…";
+      // Built once per kind of request. Rebuilding them between a mouse-down
+      // and a mouse-up would swallow the click. An agent session's request also
+      // offers its full change in the sessions window.
+      const kind = session ? "session" : "claude";
+      if (rowKey === kind) return;
+      rowKey = kind;
       clear(row);
       row.append(
         btn("Deny", "secondary", () => actions.decide("deny"), "N"),
         btn("Allow", "primary", () => actions.decide("allow"), "Y"),
       );
+      if (session) row.append(btn("Details", "secondary", () => actions.openTarget()));
     },
   };
 }
@@ -542,6 +559,7 @@ export function buildViews(
   map.set("choose", buildChoose(actions));
   map.set("music", buildMusic());
   map.set("translate", buildTranslate(actions));
+  map.set("delegate", buildDelegate(actions));
   map.set("mail", buildMail(actions));
   // Not used on macOS either: a structured web result for an attached window.
   map.set("searching", buildPlaceholder("Claude is searching…", ""));
