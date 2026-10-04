@@ -12,6 +12,10 @@
 //
 // Everything runs here, never in the island: API keys stay in the OS credential
 // store and file bytes never cross the IPC boundary.
+//
+// The same adapters also run the agent sessions (crate::agent): `complete` sends
+// a conversation with client tools and returns the model's text and tool calls,
+// in the same provider-neutral parts the history is kept in.
 
 mod anthropic;
 mod openai_chat;
@@ -27,6 +31,8 @@ use crate::secrets;
 
 /// One request may take a while: reasoning models think before they answer.
 const TIMEOUT: Duration = Duration::from_secs(120);
+/// An agent turn can write a whole file after thinking it through.
+const AGENT_TIMEOUT: Duration = Duration::from_secs(600);
 const MODELS_TIMEOUT: Duration = Duration::from_secs(15);
 /// Text and code files are inlined; anything larger is skipped.
 const MAX_INLINE_TEXT: u64 = 200_000;
@@ -36,7 +42,8 @@ pub const DEFAULT_MODEL: &str = anthropic::DEFAULT_MODEL;
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Wire {
     Anthropic,
     OpenAiResponses,
@@ -202,21 +209,125 @@ pub fn normalize_base_url(raw: &str) -> Option<String> {
 
 // ── Conversation ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Role {
     User,
     Assistant,
 }
 
 /// One piece of a message, in no provider's format.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum Part {
-    Text(String),
-    Image { mime: &'static str, base64: String },
+    Text { text: String },
+    Image { mime: String, base64: String },
     Pdf { name: String, base64: String },
+    /// The model asks for a tool to run (assistant turns).
+    ToolCall(ToolCall),
+    /// What a tool gave back, in the user turn right after its call.
+    #[serde(rename_all = "camelCase")]
+    ToolResult { id: String, output: String, is_error: bool },
+    /// Provider data that goes back unchanged to the wire that made it and
+    /// nowhere else: Claude's thinking blocks, OpenAI's reasoning items.
+    Opaque { wire: Wire, model: String, data: Value },
 }
 
+impl Part {
+    pub fn text(text: impl Into<String>) -> Self {
+        Part::Text { text: text.into() }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    /// Always an object; `{}` when the model sent nothing usable.
+    pub input: Value,
+    /// The arguments as sent, when they were not valid JSON: the call is
+    /// answered with an error and replayed as it came.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bad_arguments: Option<String>,
+    /// The provider's own call object (Chat Completions), replayed as is so
+    /// fields such as Gemini's thought signatures go back with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<Value>,
+}
+
+/// A client tool the model may call.
+#[derive(Debug, Clone)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema of the input object.
+    pub schema: Value,
+}
+
+/// Why the model stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stop {
+    /// Finished its answer.
+    Done,
+    /// Waits for the results of its tool calls.
+    ToolUse,
+    /// Ran out of output tokens: any tool call in it may be cut off.
+    Truncated,
+}
+
+/// An agent turn: the assistant's parts, in order, and why it stopped.
 #[derive(Debug, Clone, PartialEq)]
+pub struct Reply {
+    pub parts: Vec<Part>,
+    pub stop: Stop,
+}
+
+impl Reply {
+    pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
+        self.parts.iter().filter_map(|p| match p {
+            Part::ToolCall(c) => Some(c),
+            _ => None,
+        })
+    }
+
+    pub fn text(&self) -> String {
+        Turn { role: Role::Assistant, parts: self.parts.clone() }.text()
+    }
+}
+
+/// A call id for servers that send none, unique within the app's run.
+pub fn new_call_id() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    format!("call_{stamp:x}_{}", NEXT.fetch_add(1, Ordering::Relaxed))
+}
+
+/// Tool arguments as the OpenAI formats send them: a JSON string.
+pub fn parse_arguments(raw: &str) -> (Value, Option<String>) {
+    if raw.trim().is_empty() {
+        return (Value::Object(Default::default()), None);
+    }
+    match serde_json::from_str::<Value>(raw) {
+        Ok(Value::Object(map)) => (Value::Object(map), None),
+        Ok(Value::Null) => (Value::Object(Default::default()), None),
+        _ => (Value::Object(Default::default()), Some(raw.to_string())),
+    }
+}
+
+impl ToolCall {
+    /// The arguments to send back as a string, exactly as they came if they
+    /// could not be read.
+    pub fn arguments(&self) -> String {
+        self.bad_arguments.clone().unwrap_or_else(|| self.input.to_string())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Turn {
     pub role: Role,
     pub parts: Vec<Part>,
@@ -227,11 +338,16 @@ impl Turn {
         self.parts
             .iter()
             .filter_map(|p| match p {
-                Part::Text(t) => Some(t.as_str()),
+                Part::Text { text } if !text.is_empty() => Some(text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    /// Only text: the plain-string form every server accepts.
+    pub fn is_plain_text(&self) -> bool {
+        self.parts.iter().all(|p| matches!(p, Part::Text { .. }))
     }
 }
 
@@ -284,6 +400,9 @@ pub struct Request<'a> {
     pub system: &'a str,
     pub turns: &'a [Turn],
     pub reads_pdf: bool,
+    /// An agent turn's client tools. `None` is the chat: Claude's own web
+    /// search and fallback model instead of client tools.
+    pub tools: Option<&'a [ToolSpec]>,
 }
 
 const SYSTEM_PROMPT: &str = "You are Mochi, a personal AI assistant living at the top of the user's screen. \
@@ -319,7 +438,7 @@ pub async fn send(
     if conversation.is_empty() {
         parts.extend(context_parts(context.as_ref()));
     }
-    parts.push(Part::Text(query));
+    parts.push(Part::text(query));
     conversation.push(Turn { role: Role::User, parts });
 
     let turns = conversation.snapshot();
@@ -331,6 +450,7 @@ pub async fn send(
         system: &system,
         turns: &turns,
         reads_pdf: target.provider.reads_pdf,
+        tools: None,
     };
     let client = client(TIMEOUT)?;
     let result = match target.provider.wire {
@@ -343,7 +463,7 @@ pub async fn send(
     match result {
         Ok(text) if !text.trim().is_empty() => {
             let text = text.trim().to_string();
-            conversation.push(Turn { role: Role::Assistant, parts: vec![Part::Text(text.clone())] });
+            conversation.push(Turn { role: Role::Assistant, parts: vec![Part::text(text.clone())] });
             Ok(ChatReply { text })
         }
         Ok(_) => {
@@ -356,6 +476,36 @@ pub async fn send(
             Err(e)
         }
     }
+}
+
+/// One agent turn: the whole conversation, the role's system prompt and its
+/// tools. The caller keeps the history and runs the tools.
+pub async fn complete(
+    target: &Target,
+    model: &str,
+    system: &str,
+    turns: &[Turn],
+    tools: &[ToolSpec],
+) -> Result<Reply, String> {
+    if model.trim().is_empty() {
+        return Err(format!("Pick a {} model for this session first.", target.provider.name));
+    }
+    let request = Request {
+        base_url: &target.base_url,
+        key: target.key.as_deref(),
+        model,
+        system,
+        turns,
+        reads_pdf: target.provider.reads_pdf,
+        tools: Some(tools),
+    };
+    let client = client(AGENT_TIMEOUT)?;
+    match target.provider.wire {
+        Wire::Anthropic => anthropic::complete(&client, &request).await,
+        Wire::OpenAiResponses => openai_responses::complete(&client, &request).await,
+        Wire::OpenAiChat => openai_chat::complete(&client, &request).await,
+    }
+    .map_err(|e| e.describe(target.provider))
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -504,7 +654,7 @@ fn context_parts(context: Option<&ChatContext>) -> Vec<Part> {
             if let Some(part) = file_part(name, path) {
                 parts.push(part);
             }
-            parts.push(Part::Text(format!("File: {name}")));
+            parts.push(Part::text(format!("File: {name}")));
             parts
         }
         Some(ChatContext::Window { app_name, title, url }) => {
@@ -512,7 +662,7 @@ fn context_parts(context: Option<&ChatContext>) -> Vec<Part> {
             if let Some(url) = url {
                 text.push_str(&format!(", URL: {url}"));
             }
-            vec![Part::Text(text)]
+            vec![Part::text(text)]
         }
         None => Vec::new(),
     }
@@ -533,7 +683,7 @@ fn file_part(name: &str, path: &str) -> Option<Part> {
         _ => None,
     };
     if let Some(mime) = image {
-        return Some(Part::Image { mime, base64: base64(&std::fs::read(path).ok()?) });
+        return Some(Part::Image { mime: mime.to_string(), base64: base64(&std::fs::read(path).ok()?) });
     }
     if ext == "pdf" {
         return Some(Part::Pdf { name: name.to_string(), base64: base64(&std::fs::read(path).ok()?) });
@@ -542,7 +692,7 @@ fn file_part(name: &str, path: &str) -> Option<Part> {
         return None;
     }
     let text = std::fs::read_to_string(path).ok()?;
-    Some(Part::Text(format!("File contents:\n{text}")))
+    Some(Part::text(format!("File contents:\n{text}")))
 }
 
 /// What a model that can't read PDFs is told instead.
@@ -624,6 +774,38 @@ mod tests {
     }
 
     #[test]
+    fn tool_arguments_are_read_or_kept_as_sent() {
+        assert_eq!(parse_arguments(r#"{"path":"a.txt"}"#), (json!({"path": "a.txt"}), None));
+        assert_eq!(parse_arguments(""), (json!({}), None));
+        assert_eq!(parse_arguments("null"), (json!({}), None));
+        assert_eq!(parse_arguments(r#"{"path": "a.t"#), (json!({}), Some(r#"{"path": "a.t"#.into())));
+        assert_eq!(parse_arguments("[1]").1.as_deref(), Some("[1]"));
+        let call = ToolCall { id: "c".into(), name: "x".into(), input: json!({}), bad_arguments: Some("{oops".into()), raw: None };
+        assert_eq!(call.arguments(), "{oops");
+        assert_ne!(new_call_id(), new_call_id());
+    }
+
+    #[test]
+    fn a_history_with_tools_survives_a_save() {
+        let turns = vec![
+            Turn { role: Role::User, parts: vec![Part::text("list files")] },
+            Turn {
+                role: Role::Assistant,
+                parts: vec![
+                    Part::Opaque { wire: Wire::Anthropic, model: "m".into(), data: json!({"type": "thinking", "signature": "s"}) },
+                    Part::ToolCall(ToolCall { id: "t1".into(), name: "list_dir".into(), input: json!({"path": "."}), bad_arguments: None, raw: None }),
+                ],
+            },
+            Turn { role: Role::User, parts: vec![Part::ToolResult { id: "t1".into(), output: "a.txt".into(), is_error: false }] },
+        ];
+        let saved = serde_json::to_string(&turns).unwrap();
+        assert!(saved.contains(r#""type":"toolCall""#));
+        assert_eq!(serde_json::from_str::<Vec<Turn>>(&saved).unwrap(), turns);
+        assert_eq!(turns[1].text(), "");
+        assert!(!turns[1].is_plain_text());
+    }
+
+    #[test]
     fn non_chat_models_are_left_out() {
         let m = |id: &str| ModelInfo { id: id.into(), label: id.into() };
         let openai = filter_models("openai", vec![m("gpt-5"), m("gpt-5-codex"), m("text-embedding-3-small"), m("whisper-1"), m("gpt-image-1")]);
@@ -642,11 +824,11 @@ mod tests {
         std::fs::write(&png, b"\x89PNG").unwrap();
 
         let parts = context_parts(Some(&ChatContext::File { name: "notes.txt".into(), path: txt.to_string_lossy().into() }));
-        assert_eq!(parts, vec![Part::Text("File contents:\nhello".into()), Part::Text("File: notes.txt".into())]);
+        assert_eq!(parts, vec![Part::text("File contents:\nhello"), Part::text("File: notes.txt")]);
         let parts = context_parts(Some(&ChatContext::File { name: "pic.png".into(), path: png.to_string_lossy().into() }));
-        assert_eq!(parts[0], Part::Image { mime: "image/png", base64: base64(b"\x89PNG") });
+        assert_eq!(parts[0], Part::Image { mime: "image/png".into(), base64: base64(b"\x89PNG") });
         let parts = context_parts(Some(&ChatContext::Window { app_name: "Edge".into(), title: "Docs".into(), url: Some("https://x".into()) }));
-        assert_eq!(parts, vec![Part::Text("Context: App: Edge, Window: Docs, URL: https://x".into())]);
+        assert_eq!(parts, vec![Part::text("Context: App: Edge, Window: Docs, URL: https://x")]);
         std::fs::remove_dir_all(&dir).ok();
     }
 }

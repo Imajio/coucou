@@ -28,47 +28,57 @@ impl Captured {
 
 /// Starts the server; returns its base URL and the channel the request arrives on.
 pub fn serve_once(status: u16, body: &str) -> (String, mpsc::Receiver<Captured>) {
+    serve_sequence(vec![(status, body.to_string())])
+}
+
+/// Answers one request per canned response, in order: an agent's tool loop.
+pub fn serve_sequence(responses: Vec<(u16, String)>) -> (String, mpsc::Receiver<Captured>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let body = body.to_string();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let (stream, _) = listener.accept().unwrap();
-        let mut reader = BufReader::new(stream.try_clone().unwrap());
-        let mut request_line = String::new();
-        reader.read_line(&mut request_line).unwrap();
-        let mut headers = Vec::new();
-        let mut length = 0usize;
-        loop {
-            let mut line = String::new();
-            reader.read_line(&mut line).unwrap();
-            let line = line.trim_end();
-            if line.is_empty() {
-                break;
-            }
-            if let Some((k, v)) = line.split_once(':') {
-                if k.eq_ignore_ascii_case("content-length") {
-                    length = v.trim().parse().unwrap_or(0);
+        for (status, body) in responses {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request_line = String::new();
+            reader.read_line(&mut request_line).unwrap();
+            let mut headers = Vec::new();
+            let mut length = 0usize;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let line = line.trim_end();
+                if line.is_empty() {
+                    break;
                 }
-                headers.push((k.trim().to_string(), v.trim().to_string()));
+                if let Some((k, v)) = line.split_once(':') {
+                    if k.eq_ignore_ascii_case("content-length") {
+                        length = v.trim().parse().unwrap_or(0);
+                    }
+                    headers.push((k.trim().to_string(), v.trim().to_string()));
+                }
             }
+            let mut buf = vec![0u8; length];
+            reader.read_exact(&mut buf).unwrap();
+            let _ = tx.send(Captured {
+                request_line: request_line.trim_end().to_string(),
+                headers,
+                body: String::from_utf8_lossy(&buf).into_owned(),
+            });
+            let mut stream = stream;
+            let reason = if status < 300 { "OK" } else { "Error" };
+            write!(
+                stream,
+                "HTTP/1.1 {status} {reason}
+content-type: application/json
+content-length: {}
+connection: close
+
+{body}",
+                body.len()
+            )
+            .unwrap();
         }
-        let mut buf = vec![0u8; length];
-        reader.read_exact(&mut buf).unwrap();
-        tx.send(Captured {
-            request_line: request_line.trim_end().to_string(),
-            headers,
-            body: String::from_utf8_lossy(&buf).into_owned(),
-        })
-        .unwrap();
-        let mut stream = stream;
-        let reason = if status < 300 { "OK" } else { "Error" };
-        write!(
-            stream,
-            "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-            body.len()
-        )
-        .unwrap();
     });
     (base, rx)
 }
