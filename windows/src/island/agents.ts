@@ -16,6 +16,12 @@ import type { Island } from "./island";
 const MAX_ISLAND_SESSIONS = 6;
 /** A finished session stays in the island this long. */
 const RECENT_MS = 12 * 60 * 60 * 1000;
+/**
+ * How long a session's request holds the island open. A session waits as long
+ * as it takes, the island doesn't: after this it can fold (Esc, or on its own)
+ * and the pill's badge keeps the request in sight. Reopening shows it again.
+ */
+const PIN_MS = 20_000;
 
 const all = new Map<string, SessionSummary>();
 const lastStatus = new Map<string, SessionStatus>();
@@ -66,9 +72,13 @@ function afterApproval(island: Island) {
 }
 
 function dropApproval(island: Island, requestId: string) {
-  const before = State.sessionApprovals.length;
+  const req = State.sessionApprovals.find((r) => r.requestId === requestId);
+  if (!req) return;
   State.sessionApprovals = State.sessionApprovals.filter((r) => r.requestId !== requestId);
-  if (State.sessionApprovals.length !== before) afterApproval(island);
+  if (!State.sessionApprovals.some((r) => r.sessionId === req.sessionId)) {
+    State.setPillBadge(sessionTaskId(req.sessionId), null);
+  }
+  afterApproval(island);
 }
 
 function onApproval(island: Island, req: ApprovalRequest) {
@@ -81,10 +91,18 @@ function onApproval(island: Island, req: ApprovalRequest) {
     State.setFocus(taskId);
     State.isPinned = true;
     island.alert("approval");
+    window.setTimeout(() => {
+      const still = State.sessionApprovals.some((r) => r.requestId === req.requestId);
+      if (still && State.isPinned && !State.pendingApproval) {
+        State.isPinned = false;
+        island.dropPin();
+      }
+    }, PIN_MS);
   } else {
-    State.setPillBadge(taskId, "approval");
     island.reveal(true);
   }
+  // The badge outlives a folded island.
+  State.setPillBadge(taskId, "approval");
 }
 
 function onSession(island: Island, s: SessionSummary) {

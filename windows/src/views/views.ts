@@ -16,6 +16,8 @@ import { Bridge } from "../core/bridge";
 import { pickerModels, switchProvider } from "../core/models";
 import { buildTranslate } from "./translate";
 import { buildDelegate } from "./delegate";
+import { sessionTaskId } from "../core/agents";
+import { Agents } from "../core/agentApi";
 import { renderIntegrationCard, resetIntegrationCards, type IntegrationCardHooks } from "./integrations";
 
 export interface ViewActions {
@@ -244,12 +246,16 @@ function buildOverview(actions: ViewActions): ViewHost {
 
       jump.style.display = detailOpen ? "none" : "";
 
-      const others = State.otherTasks.slice(0, 4);
-      const pillKey = others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|");
+      // Four places: past that, three pills and a "+N" for the rest.
+      const all = State.otherTasks;
+      const others = all.length > 4 ? all.slice(0, 3) : all;
+      const extra = all.length - others.length;
+      const pillKey = `${others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|")}+${extra}`;
       if (pillKey !== pillIds) {
         pillIds = pillKey;
         clear(pills);
         for (const t of others) pills.append(buildPill(t, actions));
+        if (extra > 0) pills.append(morePill(extra));
         pruneMiniBots();
       }
     },
@@ -273,6 +279,15 @@ async function chatWith(provider: string, actions: ViewActions) {
   Object.assign(s, switchProvider(s, provider, list));
   void Bridge.saveSettings(s);
   State.notify();
+}
+
+/** The pills that don't fit; the sessions window has them all. */
+function morePill(count: number): HTMLElement {
+  return h("div", {
+    class: "pill more",
+    title: "All sessions",
+    onclick: () => void Agents.openWindow(null).catch(() => {}),
+  }, h("span", { class: "lbl", text: `+${count} more` }));
 }
 
 function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
@@ -346,12 +361,15 @@ function buildApproval(actions: ViewActions): ViewHost {
   return {
     el,
     sync() {
-      clear(who);
-      who.append(agentWho(State.focusTask, "needs permission"));
       // The whole point of approving here rather than in the terminal: this line
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
       const session = State.sessionApproval;
+      const asking = session
+        ? State.tasks.find((t) => t.id === sessionTaskId(session.sessionId)) ?? State.focusTask
+        : State.focusTask;
+      clear(who);
+      who.append(agentWho(asking, "needs permission"));
       code.textContent = session
         ? session.tool === "run_command"
           ? session.detail
