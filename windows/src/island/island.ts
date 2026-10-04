@@ -312,8 +312,12 @@ export class Island {
     this.fsm.launch();
   }
 
-  /** The view the island reopens on: the tab that was left, or the overview. */
+  /**
+   * The view the island reopens on: an agent session's request still waiting
+   * for an answer, else the tab that was left, or the overview.
+   */
   homeView(): IslandViewName {
+    if (State.sessionApproval) return "approval";
     return resumeView(this.lastTab, State.defaultView());
   }
 

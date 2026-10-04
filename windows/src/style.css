@@ -530,6 +530,18 @@ body {
   margin-left: 7px;
 }
 
+.pill.more {
+  justify-content: center;
+}
+
+.pill.more .lbl {
+  margin: 0;
+}
+
+.pill.more:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .pill .lbl {
   position: absolute;
   left: 0;
