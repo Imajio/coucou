@@ -404,16 +404,16 @@ fn log_line(message: String) {
 /// error anywhere.
 const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required";
 
-/// In a dev build the pages are served by Vite, so the second window needs the
+/// In a dev build the pages are served by Vite, so the other windows need the
 /// absolute dev URL; a bundled build resolves it inside the app bundle.
-fn settings_page_url(app: &AppHandle) -> WebviewUrl {
+fn page_url(app: &AppHandle, page: &str) -> WebviewUrl {
     #[cfg(dev)]
     if let Some(mut base) = app.config().build.dev_url.clone() {
-        base.set_path("/settings.html");
+        base.set_path(&format!("/{page}"));
         return WebviewUrl::External(base);
     }
     let _ = app;
-    WebviewUrl::App("settings.html".into())
+    WebviewUrl::App(page.into())
 }
 
 /// The settings window is created hidden at launch and only ever shown and
@@ -421,12 +421,22 @@ fn settings_page_url(app: &AppHandle) -> WebviewUrl {
 /// not — silently comes up blank in this app, so the window that works is the
 /// one that exists before the island's webview does.
 fn create_settings_window(app: &AppHandle) {
-    let url = settings_page_url(app);
-    match WebviewWindowBuilder::new(app, "settings", url)
+    create_hidden_window(app, "settings", "settings.html", "Settings — Coucou", (560.0, 680.0), (460.0, 480.0));
+}
+
+/// The agent sessions window: created hidden at launch like the settings
+/// window, for the same reason.
+fn create_sessions_window(app: &AppHandle) {
+    create_hidden_window(app, "sessions", "sessions.html", "Sessions - Coucou", (1120.0, 760.0), (760.0, 520.0));
+}
+
+fn create_hidden_window(app: &AppHandle, label: &str, page: &str, title: &str, size: (f64, f64), min: (f64, f64)) {
+    let url = page_url(app, page);
+    match WebviewWindowBuilder::new(app, label, url)
         .additional_browser_args(BROWSER_ARGS)
-        .title("Settings — Coucou")
-        .inner_size(560.0, 680.0)
-        .min_inner_size(460.0, 480.0)
+        .title(title)
+        .inner_size(size.0, size.1)
+        .min_inner_size(min.0, min.1)
         .resizable(true)
         .visible(false)
         .center()
@@ -442,8 +452,25 @@ fn create_settings_window(app: &AppHandle) {
                 }
             });
         }
-        Err(err) => log::line(format!("settings window failed: {err}")),
+        Err(err) => log::line(format!("{label} window failed: {err}")),
     }
+}
+
+/// Shows the sessions window, on one session (`id`) or on the new-session form.
+pub fn show_sessions_window(app: &AppHandle, id: Option<String>) {
+    let Some(win) = app.get_webview_window("sessions") else {
+        log::line("sessions window missing");
+        return;
+    };
+    let _ = win.unminimize();
+    let _ = win.show();
+    let _ = win.set_focus();
+    let _ = app.emit_to("sessions", "agent-focus", id);
+}
+
+#[tauri::command]
+fn open_sessions_window(app: AppHandle, id: Option<String>) {
+    show_sessions_window(&app, id);
 }
 
 pub fn show_settings_window(app: &AppHandle) {
@@ -530,12 +557,14 @@ pub fn run() {
             agent::agent_update,
             agent::agent_decide,
             agent::agent_check_folder,
+            open_sessions_window,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
             tray::build(&handle)?;
             // Before the island: see create_settings_window.
             create_settings_window(&handle);
+            create_sessions_window(&handle);
 
             if let Some(win) = island::window(&handle) {
                 platform::make_non_activating(&win);

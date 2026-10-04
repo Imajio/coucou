@@ -1,13 +1,15 @@
 // App state — mirror of AppState.swift (the parts the island needs).
 
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
+import type { ApprovalRequest } from "./agents";
 import type { EyeShape } from "../mochi/engine";
 import {
   MAIN_DEFAULT, PILL_CATALOG, orderPills, pillDefinition, pillShown, pillStays, sanitizePills, togglePill,
   type PillChoice, type PillDefinition,
 } from "./catalog";
 
-export type AgentSource = "claudeCode" | "n8n" | "agent";
+/** "session": one of Coucou's own agent sessions (core/agents.ts). */
+export type AgentSource = "claudeCode" | "n8n" | "agent" | "session";
 export type PillBadge = "approval" | "finished" | "error";
 
 export interface AgentTask {
@@ -148,6 +150,8 @@ class AppState {
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
   pendingApproval: ApprovalInfo | null = null;
+  /** Agent sessions waiting for a yes or no, oldest first. */
+  sessionApprovals: ApprovalRequest[] = [];
 
   integrations: Record<string, IntegrationInfo> = {};
 
@@ -279,6 +283,28 @@ class AppState {
     this.tasks = orderPills(this.tasks);
     if (!this.focusId) this.focusId = id;
     this.notify();
+  }
+
+  /**
+   * An agent session's pill: added, or brought up to date. Sessions sit right
+   * after VS Code, with the other agents.
+   */
+  upsertSession(task: AgentTask) {
+    const existing = this.tasks.find((t) => t.id === task.id);
+    if (existing) {
+      const badge = existing.pillBadge;
+      Object.assign(existing, task, { pillBadge: task.pillBadge === undefined ? badge : task.pillBadge });
+    } else {
+      this.tasks.push(task);
+      this.tasks = orderPills(this.tasks);
+      if (!this.focusId) this.focusId = task.id;
+    }
+    this.notify();
+  }
+
+  /** The approval the island shows: Claude Code's first, then the sessions'. */
+  get sessionApproval(): ApprovalRequest | null {
+    return this.pendingApproval ? null : (this.sessionApprovals[0] ?? null);
   }
 
   /** Settings → Active pills: on or off, within the rules of the catalog. */
